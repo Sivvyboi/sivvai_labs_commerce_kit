@@ -1,26 +1,202 @@
+/**
+ * app/globals.css
+ *
+ * Tailwind CSS v4 entry point and global design system.
+ *
+ * Structure:
+ * 1. Tailwind import
+ * 2. @theme inline — design tokens (maps directly to Tailwind utilities)
+ * 3. Base layer — global element resets
+ * 4. Safe-area insets — mobile-first viewport support
+ */
+
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/* ==========================================================================
+   Design Tokens — @theme inline
+   Defined here, consumed automatically by Tailwind v4 utilities.
+   Prefix: --kit-* to avoid collisions with browser/Tailwind internals.
+   ========================================================================== */
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  /* ---------- Color Palette ---------- */
+  --color-background:          var(--kit-bg);
+  --color-foreground:          var(--kit-fg);
+  --color-surface:             var(--kit-surface);
+  --color-surface-raised:      var(--kit-surface-raised);
+  --color-border:              var(--kit-border);
+  --color-muted:               var(--kit-muted);
+  --color-muted-foreground:    var(--kit-muted-fg);
+
+  /* Brand */
+  --color-primary:             var(--kit-primary);
+  --color-primary-foreground:  var(--kit-primary-fg);
+  --color-secondary:           var(--kit-secondary);
+  --color-secondary-foreground: var(--kit-secondary-fg);
+  --color-accent:              var(--kit-accent);
+  --color-accent-foreground:   var(--kit-accent-fg);
+
+  /* Semantic */
+  --color-success:             var(--kit-success);
+  --color-warning:             var(--kit-warning);
+  --color-error:               var(--kit-error);
+  --color-info:                var(--kit-info);
+
+  /* ---------- Typography ---------- */
+  --font-sans:   var(--kit-font-sans);
+  --font-mono:   var(--kit-font-mono);
+
+  /* ---------- Spacing Scale ---------- */
+  /* Inherits Tailwind defaults; extend here if needed */
+
+  /* ---------- Border Radius ---------- */
+  --radius-sm:   var(--kit-radius-sm);
+  --radius-md:   var(--kit-radius-md);
+  --radius-lg:   var(--kit-radius-lg);
+  --radius-full: 9999px;
+
+  /* ---------- Shadows ---------- */
+  --shadow-card: var(--kit-shadow-card);
+
+  /* ---------- Motion ---------- */
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
 }
+
+/* ==========================================================================
+   CSS Custom Properties — Light Mode (default)
+   ========================================================================== */
+
+:root {
+  color-scheme: light dark;
+
+  /* Colors */
+  --kit-bg:           #ffffff;
+  --kit-fg:           #0f0f0f;
+  --kit-surface:      #f8f8f8;
+  --kit-surface-raised: #ffffff;
+  --kit-border:       #e5e5e5;
+  --kit-muted:        #f4f4f4;
+  --kit-muted-fg:     #737373;
+
+  /* Brand — override in your merchant theme */
+  --kit-primary:      #0f0f0f;
+  --kit-primary-fg:   #ffffff;
+  --kit-secondary:    #f4f4f4;
+  --kit-secondary-fg: #0f0f0f;
+  --kit-accent:       #6d28d9;
+  --kit-accent-fg:    #ffffff;
+
+  /* Semantic */
+  --kit-success:  #16a34a;
+  --kit-warning:  #d97706;
+  --kit-error:    #dc2626;
+  --kit-info:     #2563eb;
+
+  /* Typography */
+  --kit-font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --kit-font-mono: var(--font-geist-mono), ui-monospace, monospace;
+
+  /* Border radius */
+  --kit-radius-sm: 0.375rem;   /* 6px */
+  --kit-radius-md: 0.625rem;   /* 10px */
+  --kit-radius-lg: 1rem;       /* 16px */
+
+  /* Shadows */
+  --kit-shadow-card: 0 1px 3px 0 rgb(0 0 0 / 0.07), 0 1px 2px -1px rgb(0 0 0 / 0.07);
+}
+
+/* ==========================================================================
+   CSS Custom Properties — Dark Mode
+   ========================================================================== */
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --kit-bg:           #0a0a0a;
+    --kit-fg:           #fafafa;
+    --kit-surface:      #141414;
+    --kit-surface-raised: #1c1c1c;
+    --kit-border:       #262626;
+    --kit-muted:        #1a1a1a;
+    --kit-muted-fg:     #a3a3a3;
+
+    --kit-primary:      #fafafa;
+    --kit-primary-fg:   #0a0a0a;
+    --kit-secondary:    #1a1a1a;
+    --kit-secondary-fg: #fafafa;
+    --kit-accent:       #7c3aed;
+    --kit-accent-fg:    #ffffff;
+
+    --kit-shadow-card: 0 1px 3px 0 rgb(0 0 0 / 0.3), 0 1px 2px -1px rgb(0 0 0 / 0.3);
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* ==========================================================================
+   Base Layer — Global Resets
+   ========================================================================== */
+
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+    border-color: var(--kit-border);
+  }
+
+  html {
+    font-family: var(--kit-font-sans);
+    /* Prevent iOS text size adjustment on orientation change */
+    -webkit-text-size-adjust: 100%;
+    /* Smooth scrolling — respects prefers-reduced-motion via Tailwind */
+    scroll-behavior: smooth;
+    /* Support for safe-area notches (iPhone notch, Android cutouts) */
+    padding-top: env(safe-area-inset-top);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+
+  body {
+    background-color: var(--kit-bg);
+    color: var(--kit-fg);
+    /* Anti-aliased text for crisp rendering */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    min-height: 100dvh;
+    /* Dynamic viewport height — handles mobile browser chrome */
+  }
+
+  /* Minimum touch target size — WCAG 2.5.5 */
+  button,
+  a,
+  [role="button"],
+  input,
+  select,
+  textarea {
+    min-height: 44px;
+  }
+
+  /* Focus ring — visible and accessible */
+  :focus-visible {
+    outline: 2px solid var(--kit-accent);
+    outline-offset: 2px;
+    border-radius: var(--kit-radius-sm);
+  }
+
+  /* Smooth transitions for color-scheme switching */
+  * {
+    transition-property: background-color, border-color, color;
+    transition-duration: 150ms;
+    transition-timing-function: ease;
+  }
+
+  /* Respect user motion preferences */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
 }

@@ -1,65 +1,98 @@
-import Image from "next/image";
+/**
+ * app/page.tsx
+ *
+ * Root home page — placeholder for Step 1.
+ *
+ * This page confirms the engineering foundation is wired correctly.
+ * It imports from every major foundation layer so TypeScript validates
+ * all paths at once during `tsc --noEmit`.
+ *
+ * Replace the entire body of this component in Step 2 when you build
+ * the actual storefront home page.
+ */
 
-export default function Home() {
+import { siteConfig } from "@/config/site";
+import { featureFlag } from "@/config/feature-flags";
+import { localizationConfig } from "@/config/localization";
+import { ROUTES } from "@/constants/routes";
+import { formatCurrency } from "@/lib/utils/format";
+
+export default function HomePage() {
+  // Smoke-test: format a price using the configured currency.
+  // This proves the localization config and format utility are wired.
+  const samplePrice = formatCurrency(0, localizationConfig.currency);
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <main className="flex min-h-dvh flex-col items-center justify-center gap-6 p-8 text-center">
+      {/* Foundation check banner */}
+      <div className="flex flex-col items-center gap-3">
+        <div className="rounded-full bg-[var(--kit-accent)] px-4 py-1.5 text-xs font-semibold uppercase tracking-widest text-[var(--kit-accent-fg)]">
+          Step 1 — Foundation
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+
+        <h1 className="text-4xl font-bold tracking-tight">
+          {siteConfig.name}
+        </h1>
+
+        <p className="max-w-md text-[var(--kit-muted-fg)]">
+          {siteConfig.tagline}
+        </p>
+      </div>
+
+      {/* Foundation status grid */}
+      <div className="mt-4 grid w-full max-w-lg gap-3 rounded-[var(--kit-radius-lg)] border border-[var(--kit-border)] bg-[var(--kit-surface)] p-6 text-left shadow-[var(--kit-shadow-card)]">
+        <h2 className="text-sm font-semibold uppercase tracking-widest text-[var(--kit-muted-fg)]">
+          Foundation Status
+        </h2>
+
+        <FoundationRow label="Config system" status="ok" detail={siteConfig.url} />
+        <FoundationRow label="Localization" status="ok" detail={`${localizationConfig.defaultLocale} · ${localizationConfig.currency} · ${samplePrice}`} />
+        <FoundationRow label="Route constants" status="ok" detail={ROUTES.api.health} />
+        <FoundationRow label="Feature flags" status="ok" detail={`auth=${featureFlag.auth} · cart=${featureFlag.cart}`} />
+        <FoundationRow label="Health endpoint" status="ok" detail="GET /api/health" />
+        <FoundationRow label="Type system" status="ok" detail="database.types.ts · environment.d.ts" />
+        <FoundationRow label="Error classes" status="ok" detail="AppError · NotFoundError · ValidationError" />
+        <FoundationRow label="Supabase clients" status="pending" detail="Install @supabase/ssr to activate" />
+      </div>
+
+      {/* Links */}
+      <p className="text-xs text-[var(--kit-muted-fg)]">
+        Step 2 will replace this page with the actual storefront.
+      </p>
+    </main>
+  );
+}
+
+/* --------------------------------------------------------------------------
+   Sub-components (private to this file — not exported)
+-------------------------------------------------------------------------- */
+
+function FoundationRow({
+  label,
+  status,
+  detail,
+}: {
+  label: string;
+  status: "ok" | "pending" | "error";
+  detail: string;
+}) {
+  const icon = status === "ok" ? "✓" : status === "pending" ? "◌" : "✗";
+  const iconColor =
+    status === "ok"
+      ? "text-[var(--kit-success)]"
+      : status === "pending"
+        ? "text-[var(--kit-warning)]"
+        : "text-[var(--kit-error)]";
+
+  return (
+    <div className="flex items-start gap-3">
+      <span className={`mt-px shrink-0 text-sm font-bold ${iconColor}`}>
+        {icon}
+      </span>
+      <div className="min-w-0">
+        <span className="text-sm font-medium">{label}</span>
+        <p className="truncate text-xs text-[var(--kit-muted-fg)]">{detail}</p>
+      </div>
     </div>
   );
 }

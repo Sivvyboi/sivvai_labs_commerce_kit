@@ -30,8 +30,16 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
-.env*
+# env files — .env.example is the ONLY env file that should be committed.
+# It contains no real secrets, only documented key names.
+.env
+.env.local
+.env.development
+.env.production
+.env.staging
+.env.test
+# Explicitly allow .env.example:
+!.env.example
 
 # vercel
 .vercel
