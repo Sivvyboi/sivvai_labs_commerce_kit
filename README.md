@@ -1,162 +1,129 @@
-# sivvai_labs_commerce_kit
+# Sivvai Labs Commerce Kit
 
-A reusable, production-ready Next.js commerce framework for single-merchant social-commerce businesses — fashion, food, gadgets, beauty, perfume, supermarkets, accessories, restaurants, and more.
+> **A production-ready, mobile-first, highly configurable Next.js commerce framework for Nigerian social commerce businesses.**
 
----
+Sivvai Labs Commerce Kit is an opinionated e-commerce starter framework built with **Next.js (App Router)**, **TypeScript**, **Tailwind CSS**, and **Supabase**. It is designed to help developers rapidly build, customize, and deploy modern online stores for single-merchant businesses such as fashion boutiques, perfume stores, restaurants, supermarkets, gadget shops, beauty brands, bookstores, and other social-commerce businesses.
 
-## Tech Stack
-
-| Layer | Choice |
-|---|---|
-| Framework | Next.js 16 (App Router) |
-| Language | TypeScript 5 (strict) |
-| Styling | Tailwind CSS v4 |
-| Database | Supabase + PostgreSQL |
-| Architecture | Mobile-first, server-first |
+Unlike traditional templates, this project is being architected as a reusable framework where branding, business configuration, and integrations can be changed with minimal effort, allowing a single codebase to power multiple client stores.
 
 ---
 
-## Getting Started
+## Vision
 
-### 1. Install dependencies
-
-```bash
-npm install
-```
-
-### 2. Configure environment variables
-
-```bash
-cp .env.example .env.local
-# Fill in your Supabase project URL, keys, and site details
-```
-
-### 3. Start the development server
-
-```bash
-npm run dev
-```
-
-Open [http://localhost:3000](http://localhost:3000) — you should see the foundation status page.
-
-### 4. Verify the health endpoint
-
-```bash
-curl http://localhost:3000/api/health
-# → { "status": "ok", "timestamp": "...", "service": "...", ... }
-```
+Create a developer-first commerce framework that enables launching production-ready stores in hours instead of weeks while maintaining clean architecture, scalability, and excellent developer experience.
 
 ---
 
-## Project Structure
+## Core Goals
 
-```
-sivvai_labs_commerce_kit/
-├── app/               # Next.js App Router (routes, layouts, pages)
-│   ├── (commerce)/    # Storefront route group
-│   ├── (admin)/       # Merchant admin route group
-│   └── api/health/    # Health-check endpoint
-├── components/        # Shared UI components
-│   ├── ui/            # Primitive/headless UI atoms
-│   └── providers/     # Client-side React context providers
-├── config/            # Modular site configuration
-│   ├── site.ts        # Brand identity
-│   ├── localization.ts # Locale, currency, RTL
-│   ├── seo.ts         # Default metadata
-│   ├── featureFlag.ts # Feature toggles
-│   └── index.ts       # Barrel export
-├── constants/         # App-wide constants (routes, metadata)
-├── docs/              # Architecture decision records
-├── features/          # Feature slices (cart, auth, search — future)
-├── hooks/             # Custom React hooks (future)
-├── lib/               # Libraries and service clients
-│   ├── supabase/      # Browser / server / middleware clients
-│   ├── utils/         # cn, format, assert utilities
-│   └── errors/        # Typed AppError class hierarchy
-├── messages/          # i18n message catalogs (future)
-├── services/          # External service integrations (future)
-├── types/             # Global TypeScript types
-│   ├── database.types.ts # Supabase schema types
-│   └── environment.d.ts  # process.env type augmentation
-└── public/            # Static assets
-```
+* Mobile-first user experience
+* Configuration-driven architecture
+* Single-merchant commerce model
+* Highly reusable and easily rebrandable
+* Production-ready engineering standards
+* Type-safe development
+* Performance-first rendering
+* Modular feature architecture
+* Built for Nigerian social commerce with global expansion in mind
 
 ---
 
-## Available Scripts
+## Planned Features
 
-| Script | Description |
-|---|---|
-| `npm run dev` | Start the development server |
-| `npm run build` | Build for production |
-| `npm run start` | Start the production server |
-| `npm run lint` | Run ESLint |
-| `npm run type-check` | Run TypeScript type checking |
+### Storefront
 
----
+* Responsive mobile-first design
+* Product catalog
+* Categories and collections
+* Product variants (size, color, weight, storage, flavor, etc.)
+* Search and filtering
+* Shopping cart
+* Guest checkout
 
-## Configuration
+### Inventory Management
 
-All configuration lives in `config/`. Import from the barrel:
+* Variant-level inventory tracking
+* Real-time stock availability
+* Low-stock monitoring
+* Inventory history
 
-```ts
-import { siteConfig, featureFlag, localizationConfig } from "@/config";
-```
+### Checkout & Payments
 
-| File | Purpose |
-|---|---|
-| `config/site.ts` | Store name, URL, contact details, social handles |
-| `config/localization.ts` | Locale, currency, timezone, RTL flag |
-| `config/seo.ts` | Default metadata, OG tags, robots |
-| `config/featureFlag.ts` | Feature toggles driven by `NEXT_PUBLIC_FEATURE_*` env vars |
+* Dynamic Virtual Account generation
+* Paystack integration
+* Flutterwave integration
+* Automated payment verification
+* Webhook-driven order updates
+* Secure checkout experience
 
----
+### Administration
 
-## Import Aliases
+* Product management
+* Inventory dashboard
+* Order management
+* Customer management
+* Store configuration
+* Sales analytics
 
-A single `@/*` alias maps to the project root:
+### Framework Features
 
-```ts
-import { cn } from "@/lib/utils/cn";
-import { ROUTES } from "@/constants/routes";
-import type { Database } from "@/types";
-```
-
----
-
-## Environment Variables
-
-Copy `.env.example` to `.env.local` and fill in the values. See `.env.example` for documentation on each variable.
-
-**Never commit `.env.local`** — it is gitignored. Only `.env.example` is committed.
-
----
-
-## Supabase Setup
-
-The Supabase clients in `lib/supabase/` are stubs until `@supabase/ssr` is installed:
-
-```bash
-npm install @supabase/ssr @supabase/supabase-js
-```
-
-Then uncomment the implementation in each client file and add your project credentials to `.env.local`.
+* Modular configuration system
+* Theme engine
+* Feature flags
+* Localization support
+* Service abstraction
+* Reusable UI components
+* Plugin-ready architecture
 
 ---
 
-## Step Roadmap
+## Technology Stack
 
-| Step | Status | Description |
-|---|---|---|
-| **1 — Foundation** | ✅ Complete | Project structure, config, types, utilities |
-| 2 — Design System | ⬜ Next | Tailwind design tokens, base components |
-| 3 — Catalog | ⬜ | Product listing, PDP, categories |
-| 4 — Auth | ⬜ | Supabase Auth, protected routes |
-| 5 — Cart & Checkout | ⬜ | Cart state, order placement |
-| 6 — Admin | ⬜ | Merchant dashboard |
+* **Framework:** Next.js (App Router)
+* **Language:** TypeScript
+* **Styling:** Tailwind CSS
+* **Database:** Supabase (PostgreSQL)
+* **Authentication:** Supabase Auth *(planned)*
+* **Payments:** Paystack & Flutterwave *(planned)*
+* **Deployment:** Vercel *(recommended)*
 
 ---
 
-## Contributing
+## Current Status
 
-See [CONTRIBUTING.md](./CONTRIBUTING.md).
+🚧 **Active Development**
+
+The project is currently in its foundational engineering phase. The architecture, project structure, and development standards are being established before implementing commerce functionality.
+
+Completed:
+
+* ✅ Engineering foundation
+* ✅ Modular configuration structure
+* ✅ Project architecture
+* ✅ Utility layer
+* ✅ Type-safe project setup
+* ✅ Development tooling
+* ✅ Error handling foundation
+
+Upcoming:
+
+* Configuration & Theme Engine
+* Design System
+* Product Domain
+* Inventory System
+* Checkout Flow
+* Payment Integration
+* Admin Dashboard
+* CLI Project Generator
+
+---
+
+## Long-Term Goal
+
+Transform **Sivvai Labs Commerce Kit** into a complete developer framework capable of generating production-ready e-commerce websites for any single-merchant social-commerce business through a centralized configuration system and future CLI tooling.
+
+---
+
+## License
+
+This project is currently under active development by **Sivvai Labs**. Licensing details will be added before the first public release.
