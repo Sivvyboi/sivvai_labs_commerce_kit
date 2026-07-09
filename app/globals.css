@@ -20,34 +20,44 @@
 
 @theme inline {
   /* ---------- Color Palette ---------- */
-  --color-background:          var(--kit-bg);
-  --color-foreground:          var(--kit-fg);
-  --color-surface:             var(--kit-surface);
-  --color-surface-raised:      var(--kit-surface-raised);
-  --color-border:              var(--kit-border);
-  --color-muted:               var(--kit-muted);
-  --color-muted-foreground:    var(--kit-muted-fg);
+  --color-background:            var(--kit-bg);
+  --color-foreground:            var(--kit-fg);
+  --color-surface:               var(--kit-surface);
+  --color-surface-raised:        var(--kit-surface-raised);
+  --color-card:                  var(--kit-card);
+  --color-card-foreground:       var(--kit-fg);
+  --color-popover:               var(--kit-surface-raised);
+  --color-popover-foreground:    var(--kit-fg);
+  --color-border:                var(--kit-border);
+  --color-input:                 var(--kit-border);
+  --color-ring:                  var(--kit-accent);
+  --color-muted:                 var(--kit-muted);
+  --color-muted-foreground:      var(--kit-muted-fg);
 
   /* Brand */
-  --color-primary:             var(--kit-primary);
-  --color-primary-foreground:  var(--kit-primary-fg);
-  --color-secondary:           var(--kit-secondary);
-  --color-secondary-foreground: var(--kit-secondary-fg);
-  --color-accent:              var(--kit-accent);
-  --color-accent-foreground:   var(--kit-accent-fg);
+  --color-primary:               var(--kit-primary);
+  --color-primary-foreground:    var(--kit-primary-fg);
+  --color-secondary:             var(--kit-secondary);
+  --color-secondary-foreground:  var(--kit-secondary-fg);
+  --color-accent:                var(--kit-accent);
+  --color-accent-foreground:     var(--kit-accent-fg);
 
-  /* Semantic */
-  --color-success:             var(--kit-success);
-  --color-warning:             var(--kit-warning);
-  --color-error:               var(--kit-error);
-  --color-info:                var(--kit-info);
+  /* Semantic / Destructive */
+  --color-success:               var(--kit-success);
+  --color-warning:               var(--kit-warning);
+  --color-danger:                var(--kit-danger);
+  --color-destructive:           var(--kit-danger);
+  --color-destructive-foreground: var(--kit-primary-fg);
+  --color-info:                  var(--kit-info);
+
+  /* Text semantic colors */
+  --color-text-primary:          var(--kit-text-primary);
+  --color-text-secondary:        var(--kit-text-secondary);
+  --color-text-muted:            var(--kit-text-muted);
 
   /* ---------- Typography ---------- */
   --font-sans:   var(--kit-font-sans);
   --font-mono:   var(--kit-font-mono);
-
-  /* ---------- Spacing Scale ---------- */
-  /* Inherits Tailwind defaults; extend here if needed */
 
   /* ---------- Border Radius ---------- */
   --radius-sm:   var(--kit-radius-sm);
@@ -56,7 +66,9 @@
   --radius-full: 9999px;
 
   /* ---------- Shadows ---------- */
-  --shadow-card: var(--kit-shadow-card);
+  --shadow-sm:   var(--kit-shadow-sm);
+  --shadow-md:   var(--kit-shadow-md);
+  --shadow-lg:   var(--kit-shadow-lg);
 
   /* ---------- Motion ---------- */
   --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
@@ -74,11 +86,12 @@
   --kit-fg:           #0f0f0f;
   --kit-surface:      #f8f8f8;
   --kit-surface-raised: #ffffff;
+  --kit-card:         #ffffff;
   --kit-border:       #e5e5e5;
   --kit-muted:        #f4f4f4;
   --kit-muted-fg:     #737373;
 
-  /* Brand — override in your merchant theme */
+  /* Brand */
   --kit-primary:      #0f0f0f;
   --kit-primary-fg:   #ffffff;
   --kit-secondary:    #f4f4f4;
@@ -87,10 +100,15 @@
   --kit-accent-fg:    #ffffff;
 
   /* Semantic */
-  --kit-success:  #16a34a;
-  --kit-warning:  #d97706;
-  --kit-error:    #dc2626;
-  --kit-info:     #2563eb;
+  --kit-success:      #16a34a;
+  --kit-warning:      #d97706;
+  --kit-danger:       #dc2626;
+  --kit-info:          #2563eb;
+
+  /* Text Semantic */
+  --kit-text-primary:   #0f0f0f;
+  --kit-text-secondary: #525252;
+  --kit-text-muted:     #8e8e93;
 
   /* Typography */
   --kit-font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
@@ -102,7 +120,9 @@
   --kit-radius-lg: 1rem;       /* 16px */
 
   /* Shadows */
-  --kit-shadow-card: 0 1px 3px 0 rgb(0 0 0 / 0.07), 0 1px 2px -1px rgb(0 0 0 / 0.07);
+  --kit-shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --kit-shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --kit-shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
 }
 
 /* ==========================================================================
@@ -115,6 +135,7 @@
     --kit-fg:           #fafafa;
     --kit-surface:      #141414;
     --kit-surface-raised: #1c1c1c;
+    --kit-card:         #1c1c1e;
     --kit-border:       #262626;
     --kit-muted:        #1a1a1a;
     --kit-muted-fg:     #a3a3a3;
@@ -126,7 +147,15 @@
     --kit-accent:       #7c3aed;
     --kit-accent-fg:    #ffffff;
 
-    --kit-shadow-card: 0 1px 3px 0 rgb(0 0 0 / 0.3), 0 1px 2px -1px rgb(0 0 0 / 0.3);
+    --kit-danger:       #ef4444;
+
+    --kit-text-primary:   #fafafa;
+    --kit-text-secondary: #a3a3a3;
+    --kit-text-muted:     #737373;
+
+    --kit-shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
+    --kit-shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.4), 0 2px 4px -2px rgb(0 0 0 / 0.4);
+    --kit-shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.4), 0 4px 6px -4px rgb(0 0 0 / 0.4);
   }
 }
 

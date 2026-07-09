@@ -1,8 +1,8 @@
 /**
- * middleware.ts
+ * proxy.ts
  *
- * Next.js middleware — runs on every matching request BEFORE the page renders.
- * Executes in the Edge Runtime (no Node.js APIs like `fs`, `crypto`, etc.).
+ * Next.js request proxy — runs on every matching request BEFORE the page renders.
+ * Note: Starting with Next.js 16, Middleware is deprecated and renamed to Proxy.
  *
  * Current responsibilities (Step 1 — skeleton only):
  * - Stub for future auth session refresh via Supabase
@@ -20,25 +20,25 @@
  * - The health-check endpoint (so monitoring isn't blocked by auth logic)
  *
  * Reference:
- * → node_modules/next/dist/docs/01-app/01-getting-started/02-project-structure.md
+ * → node_modules/next/dist/docs/01-app/01-getting-started/16-proxy.md
  */
 
 import { type NextRequest, NextResponse } from "next/server";
 
-export function middleware(_request: NextRequest): NextResponse {
+export function proxy(_request: NextRequest): NextResponse {
   // TODO (Step 4 — Auth): Uncomment and implement Supabase session refresh.
   //
   // import { createMiddlewareClient } from "@/lib/supabase/middleware";
   //
-  // const { supabase, response } = createMiddlewareClient(request);
+  // const { supabase, response } = createMiddlewareClient(_request);
   // await supabase.auth.getSession(); // refreshes session cookie
   //
   // const { data: { session } } = await supabase.auth.getSession();
-  // const isProtected = request.nextUrl.pathname.startsWith("/account") ||
-  //                     request.nextUrl.pathname.startsWith("/admin");
+  // const isProtected = _request.nextUrl.pathname.startsWith("/account") ||
+  //                     _request.nextUrl.pathname.startsWith("/admin");
   //
   // if (isProtected && !session) {
-  //   return NextResponse.redirect(new URL(ROUTES.auth.signIn, request.url));
+  //   return NextResponse.redirect(new URL(ROUTES.auth.signIn, _request.url));
   // }
   //
   // return response;

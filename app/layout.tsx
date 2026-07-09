@@ -86,8 +86,7 @@ export default function RootLayout({
     >
       <body className="min-h-dvh bg-background text-foreground antialiased">
         {/*
-          TODO (Step 2): Wrap children in global providers here.
-          Pattern: import ThemeProvider from "@/components/providers/ThemeProvider"
+          Global Client Providers will be wrapped here when needed.
           Keep providers as shallow Client Component wrappers — pass children as props.
           Never mark this layout 'use client'.
         */}
