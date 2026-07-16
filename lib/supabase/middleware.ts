@@ -25,7 +25,9 @@
  *       npm install @supabase/ssr @supabase/supabase-js
  */
 
-import type { NextRequest, NextResponse } from "next/server";
+import { createServerClient } from "@supabase/ssr";
+import type { Database } from "@/types";
+import { type NextRequest, NextResponse } from "next/server";
 
 /**
  * Creates a Supabase client suitable for Next.js middleware.
@@ -33,44 +35,49 @@ import type { NextRequest, NextResponse } from "next/server";
  * set by Supabase are correctly forwarded to the browser.
  */
 export function createMiddlewareClient(
-  // Intentionally unused until @supabase/ssr implementation is added.
-  // The underscore prefix satisfies the no-unused-vars lint rule.
-  _request: NextRequest
+  request: NextRequest
 ): {
-  supabase: never;
+  supabase: ReturnType<typeof createServerClient<Database>>;
   response: NextResponse;
 } {
-  // TODO: Implement with @supabase/ssr
-  //
-  // import { createServerClient } from "@supabase/ssr";
-  // import type { Database } from "@/types";
-  // import { NextResponse } from "next/server";
-  //
-  // let response = NextResponse.next({ request });
-  //
-  // const supabase = createServerClient<Database>(
-  //   process.env.SUPABASE_URL!,
-  //   process.env.SUPABASE_ANON_KEY!,
-  //   {
-  //     cookies: {
-  //       getAll() { return request.cookies.getAll(); },
-  //       setAll(cookiesToSet) {
-  //         cookiesToSet.forEach(({ name, value }) =>
-  //           request.cookies.set(name, value)
-  //         );
-  //         response = NextResponse.next({ request });
-  //         cookiesToSet.forEach(({ name, value, options }) =>
-  //           response.cookies.set(name, value, options)
-  //         );
-  //       },
-  //     },
-  //   }
-  // );
-  //
-  // return { supabase, response };
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
 
-  throw new Error(
-    "createMiddlewareClient is not yet implemented. " +
-      "Install @supabase/ssr and uncomment the implementation in lib/supabase/middleware.ts"
+  if (!supabaseUrl || !supabaseKey) {
+    throw new Error(
+      "Supabase environment variables are missing. Please define NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY in .env.local"
+    );
+  }
+
+  let response = NextResponse.next({
+    request: {
+      headers: request.headers,
+    },
+  });
+
+  const supabase = createServerClient<Database>(
+    supabaseUrl,
+    supabaseKey,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll();
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value }) =>
+            request.cookies.set(name, value)
+          );
+          response = NextResponse.next({
+            request,
+          });
+          cookiesToSet.forEach(({ name, value, options }) =>
+            response.cookies.set(name, value, options)
+          );
+        },
+      },
+    }
   );
+
+  return { supabase, response };
 }
+

@@ -19,9 +19,12 @@
  */
 
 import "server-only";
+import { createServerClient as _createServerClient } from "@supabase/ssr";
+import { cookies } from "next/headers";
+import type { Database } from "@/types";
 
 // ---------------------------------------------------------------------------
-// Placeholder — replace with real implementation once @supabase/ssr is installed
+// Real implementation using @supabase/ssr
 // ---------------------------------------------------------------------------
 
 /**
@@ -32,36 +35,37 @@ import "server-only";
  * in Next.js 16 (breaking change from Next.js 14).
  */
 export async function createServerClient() {
-  // TODO: Implement with @supabase/ssr
-  //
-  // import { createServerClient as _createServerClient } from "@supabase/ssr";
-  // import { cookies } from "next/headers";
-  // import type { Database } from "@/types";
-  //
-  // const cookieStore = await cookies();
-  //
-  // return _createServerClient<Database>(
-  //   process.env.SUPABASE_URL!,
-  //   process.env.SUPABASE_ANON_KEY!,
-  //   {
-  //     cookies: {
-  //       getAll() { return cookieStore.getAll(); },
-  //       setAll(cookiesToSet) {
-  //         try {
-  //           cookiesToSet.forEach(({ name, value, options }) =>
-  //             cookieStore.set(name, value, options)
-  //           );
-  //         } catch {
-  //           // The `setAll` method was called from a Server Component.
-  //           // Ignore — middleware refreshes sessions instead.
-  //         }
-  //       },
-  //     },
-  //   }
-  // );
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
 
-  throw new Error(
-    "createServerClient is not yet implemented. " +
-      "Install @supabase/ssr and uncomment the implementation in lib/supabase/server.ts"
+  if (!supabaseUrl || !supabaseKey) {
+    throw new Error(
+      "Supabase environment variables are missing. Please define NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY in .env.local"
+    );
+  }
+
+  const cookieStore = await cookies();
+
+  return _createServerClient<Database>(
+    supabaseUrl,
+    supabaseKey,
+    {
+      cookies: {
+        getAll() {
+          return cookieStore.getAll();
+        },
+        setAll(cookiesToSet) {
+          try {
+            cookiesToSet.forEach(({ name, value, options }) =>
+              cookieStore.set(name, value, options)
+            );
+          } catch {
+            // The `setAll` method was called from a Server Component.
+            // Ignore — middleware refreshes sessions instead.
+          }
+        },
+      },
+    }
   );
 }
+

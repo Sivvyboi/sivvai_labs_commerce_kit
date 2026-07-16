@@ -24,29 +24,16 @@
  */
 
 import { type NextRequest, NextResponse } from "next/server";
+import { createMiddlewareClient } from "@/lib/supabase/middleware";
 
-export function proxy(_request: NextRequest): NextResponse {
-  // TODO (Step 4 — Auth): Uncomment and implement Supabase session refresh.
-  //
-  // import { createMiddlewareClient } from "@/lib/supabase/middleware";
-  //
-  // const { supabase, response } = createMiddlewareClient(_request);
-  // await supabase.auth.getSession(); // refreshes session cookie
-  //
-  // const { data: { session } } = await supabase.auth.getSession();
-  // const isProtected = _request.nextUrl.pathname.startsWith("/account") ||
-  //                     _request.nextUrl.pathname.startsWith("/admin");
-  //
-  // if (isProtected && !session) {
-  //   return NextResponse.redirect(new URL(ROUTES.auth.signIn, _request.url));
-  // }
-  //
-  // return response;
+export async function proxy(request: NextRequest): Promise<NextResponse> {
+  // Auth Session Refresh: Refreshes the Supabase session cookie on request.
+  const { supabase, response } = createMiddlewareClient(request);
+  await supabase.auth.getUser();
 
   // TODO (Step 5 — i18n): Detect locale from Accept-Language and redirect.
 
-  // Pass through with no modifications until the above TODOs are implemented.
-  return NextResponse.next();
+  return response;
 }
 
 export const config = {
