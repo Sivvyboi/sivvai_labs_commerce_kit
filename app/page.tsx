@@ -1,26 +1,31 @@
-/**
- * app/page.tsx
- *
- * Root home page — placeholder for Step 1.
- *
- * This page confirms the engineering foundation is wired correctly.
- * It imports from every major foundation layer so TypeScript validates
- * all paths at once during `tsc --noEmit`.
- *
- * Replace the entire body of this component in Step 2 when you build
- * the actual storefront home page.
- */
-
 import { siteConfig } from "@/config/site";
 import { featureFlag } from "@/config/feature-flags";
 import { localizationConfig } from "@/config/localization";
 import { ROUTES } from "@/constants/routes";
 import { formatCurrency } from "@/lib/utils/format";
+import { createServerClient } from "@/lib/supabase/server";
 
-export default function HomePage() {
+export default async function HomePage() {
   // Smoke-test: format a price using the configured currency.
   // This proves the localization config and format utility are wired.
   const samplePrice = formatCurrency(0, localizationConfig.currency);
+
+  let supabaseStatus: "ok" | "pending" | "error" = "ok";
+  let supabaseDetail = "Supabase client configured successfully";
+
+  try {
+    const supabase = await createServerClient();
+    const { error } = await supabase.auth.getUser();
+    if (error && error.message !== "Auth session missing!") {
+      supabaseStatus = "error";
+      supabaseDetail = `Auth error: ${error.message}`;
+    } else {
+      supabaseDetail = "Connected & active (Session manager initialized)";
+    }
+  } catch (err) {
+    supabaseStatus = "error";
+    supabaseDetail = err instanceof Error ? err.message : String(err);
+  }
 
   return (
     <main className="flex min-h-dvh flex-col items-center justify-center gap-6 p-8 text-center">
@@ -52,7 +57,7 @@ export default function HomePage() {
         <FoundationRow label="Health endpoint" status="ok" detail="GET /api/health" />
         <FoundationRow label="Type system" status="ok" detail="database.types.ts · environment.d.ts" />
         <FoundationRow label="Error classes" status="ok" detail="AppError · NotFoundError · ValidationError" />
-        <FoundationRow label="Supabase clients" status="pending" detail="Install @supabase/ssr to activate" />
+        <FoundationRow label="Supabase clients" status={supabaseStatus} detail={supabaseDetail} />
       </div>
 
       {/* Links */}
@@ -62,10 +67,6 @@ export default function HomePage() {
     </main>
   );
 }
-
-/* --------------------------------------------------------------------------
-   Sub-components (private to this file — not exported)
--------------------------------------------------------------------------- */
 
 function FoundationRow({
   label,

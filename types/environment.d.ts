@@ -37,13 +37,17 @@ declare namespace NodeJS {
     NEXT_PUBLIC_INSTAGRAM_HANDLE?: string;
 
     // ------------------------------------------------------------------
-    // Supabase (server-only — never expose to client)
+    // Supabase — public (browser-safe, required by createBrowserClient)
     // ------------------------------------------------------------------
     /** Supabase project URL, e.g. "https://<ref>.supabase.co" */
-    SUPABASE_URL?: string;
-    /** Supabase anon key (safe for browser, but kept server-only here) */
-    SUPABASE_ANON_KEY?: string;
-    /** Supabase service role key — NEVER expose to client */
+    NEXT_PUBLIC_SUPABASE_URL?: string;
+    /** Supabase anon key — intentionally public, safe to ship to browser */
+    NEXT_PUBLIC_SUPABASE_ANON_KEY?: string;
+
+    // ------------------------------------------------------------------
+    // Supabase — server-only (NEVER expose to client)
+    // ------------------------------------------------------------------
+    /** Supabase service role key — bypasses RLS, NEVER expose to client */
     SUPABASE_SERVICE_ROLE_KEY?: string;
 
     // ------------------------------------------------------------------

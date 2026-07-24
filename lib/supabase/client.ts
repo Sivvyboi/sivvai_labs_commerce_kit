@@ -24,23 +24,17 @@
 
 import "client-only";
 
+import { createBrowserClient as _createBrowserClient } from "@supabase/ssr";
+import type { Database } from "@/types";
+
 /**
  * Creates a Supabase client for browser/client-side usage.
  * This is a synchronous function — no cookies() or headers() needed.
  */
 export function createBrowserClient() {
-  // TODO: Implement with @supabase/ssr
-  //
-  // import { createBrowserClient as _createBrowserClient } from "@supabase/ssr";
-  // import type { Database } from "@/types";
-  //
-  // return _createBrowserClient<Database>(
-  //   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  //   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  // );
-
-  throw new Error(
-    "createBrowserClient is not yet implemented. " +
-      "Install @supabase/ssr and uncomment the implementation in lib/supabase/client.ts"
+  return _createBrowserClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 }
+

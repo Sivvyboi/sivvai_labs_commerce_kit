@@ -24,6 +24,10 @@ import "server-only";
 // Placeholder — replace with real implementation once @supabase/ssr is installed
 // ---------------------------------------------------------------------------
 
+import { createServerClient as _createServerClient } from "@supabase/ssr";
+import { cookies } from "next/headers";
+import type { Database } from "@/types";
+
 /**
  * Creates a Supabase client configured for the server environment.
  * Reads cookies via next/headers for session management.
@@ -32,36 +36,26 @@ import "server-only";
  * in Next.js 16 (breaking change from Next.js 14).
  */
 export async function createServerClient() {
-  // TODO: Implement with @supabase/ssr
-  //
-  // import { createServerClient as _createServerClient } from "@supabase/ssr";
-  // import { cookies } from "next/headers";
-  // import type { Database } from "@/types";
-  //
-  // const cookieStore = await cookies();
-  //
-  // return _createServerClient<Database>(
-  //   process.env.SUPABASE_URL!,
-  //   process.env.SUPABASE_ANON_KEY!,
-  //   {
-  //     cookies: {
-  //       getAll() { return cookieStore.getAll(); },
-  //       setAll(cookiesToSet) {
-  //         try {
-  //           cookiesToSet.forEach(({ name, value, options }) =>
-  //             cookieStore.set(name, value, options)
-  //           );
-  //         } catch {
-  //           // The `setAll` method was called from a Server Component.
-  //           // Ignore — middleware refreshes sessions instead.
-  //         }
-  //       },
-  //     },
-  //   }
-  // );
+  const cookieStore = await cookies();
 
-  throw new Error(
-    "createServerClient is not yet implemented. " +
-      "Install @supabase/ssr and uncomment the implementation in lib/supabase/server.ts"
+  return _createServerClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() { return cookieStore.getAll(); },
+        setAll(cookiesToSet) {
+          try {
+            cookiesToSet.forEach(({ name, value, options }) =>
+              cookieStore.set(name, value, options)
+            );
+          } catch {
+            // The `setAll` method was called from a Server Component.
+            // Ignore — middleware refreshes sessions instead.
+          }
+        },
+      },
+    }
   );
 }
+

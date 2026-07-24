@@ -84,7 +84,10 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable}`}
       suppressHydrationWarning
     >
-      <body className="min-h-dvh bg-background text-foreground antialiased">
+      <body 
+        className="min-h-dvh bg-background text-foreground antialiased"
+        suppressHydrationWarning
+      >
         {/*
           Global Client Providers will be wrapped here when needed.
           Keep providers as shallow Client Component wrappers — pass children as props.
