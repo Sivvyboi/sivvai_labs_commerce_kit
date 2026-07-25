@@ -12,6 +12,14 @@
  * - Names use UPPER_SNAKE_CASE for the env var, camelCase for the flag key.
  * - Add a comment explaining what the flag gates before shipping it.
  * - Remove flags once the feature is fully GA and the toggle is no longer needed.
+ *
+ * Added in Step 6 (Storefront):
+ *  - newsletter      : Homepage newsletter sign-up section
+ *  - testimonials    : Homepage testimonials carousel
+ *  - recentlyViewed  : PDP "Recently Viewed" horizontal scroll
+ *  - productZoom     : PDP image zoom on hover / pinch
+ *  - infiniteScroll  : Catalog infinite scroll (vs. pagination)
+ *  - relatedProducts : PDP "You May Also Like" section
  */
 
 function flag(envVar: string, defaultValue = false): boolean {
@@ -54,6 +62,46 @@ export const featureFlag = {
    * When enabled, "Buy Now" sends a pre-filled WhatsApp message to the merchant.
    */
   whatsappCheckout: flag("NEXT_PUBLIC_FEATURE_WHATSAPP_CHECKOUT"),
+
+  // ---------------------------------------------------------------------------
+  // Step 6 — Storefront flags
+  // ---------------------------------------------------------------------------
+
+  /**
+   * FEATURE: Newsletter sign-up section on the homepage.
+   * Enable after connecting an email marketing provider (e.g., Mailchimp).
+   */
+  newsletter: flag("NEXT_PUBLIC_FEATURE_NEWSLETTER"),
+
+  /**
+   * FEATURE: Customer testimonials section on the homepage.
+   * Content is hardcoded in config/storefront.ts until a reviews table exists.
+   */
+  testimonials: flag("NEXT_PUBLIC_FEATURE_TESTIMONIALS"),
+
+  /**
+   * FEATURE: "Recently Viewed" product strip on the PDP.
+   * Reads from localStorage — purely client-side, no backend needed.
+   */
+  recentlyViewed: flag("NEXT_PUBLIC_FEATURE_RECENTLY_VIEWED"),
+
+  /**
+   * FEATURE: Image zoom on the PDP (hover zoom on desktop, pinch on mobile).
+   * Disable on low-end devices or if image quality is insufficient for zoom.
+   */
+  productZoom: flag("NEXT_PUBLIC_FEATURE_PRODUCT_ZOOM"),
+
+  /**
+   * FEATURE: Infinite scroll on catalog and search pages.
+   * When false, numbered pagination is shown instead.
+   */
+  infiniteScroll: flag("NEXT_PUBLIC_FEATURE_INFINITE_SCROLL"),
+
+  /**
+   * FEATURE: "You May Also Like" related products section on the PDP.
+   * Fetches products in the same category from the server.
+   */
+  relatedProducts: flag("NEXT_PUBLIC_FEATURE_RELATED_PRODUCTS"),
 } as const;
 
 export type FeatureFlag = typeof featureFlag;

@@ -6,6 +6,11 @@
  *
  * Keep this framework-agnostic — no Next.js imports here. Other config
  * modules and components import from this file, not the other way around.
+ *
+ * Added in Step 6 (Storefront):
+ *  - logo       : Optional logo asset path
+ *  - tiktok     : TikTok handle (common for social commerce merchants)
+ *  - facebook   : Facebook page handle
  */
 
 export const siteConfig = {
@@ -29,6 +34,13 @@ export const siteConfig = {
   url: process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000",
 
   /**
+   * Optional logo image.
+   * Path is relative to the /public directory.
+   * When null, the store name is rendered as text.
+   */
+  logo: null as string | null,
+
+  /**
    * Contact details for the merchant.
    * Used in footers, order confirmation emails, and support pages.
    */
@@ -39,6 +51,10 @@ export const siteConfig = {
     whatsapp: process.env.NEXT_PUBLIC_WHATSAPP_NUMBER ?? "",
     /** Instagram handle without the @ symbol */
     instagram: process.env.NEXT_PUBLIC_INSTAGRAM_HANDLE ?? "",
+    /** TikTok handle without the @ symbol */
+    tiktok: process.env.NEXT_PUBLIC_TIKTOK_HANDLE ?? "",
+    /** Facebook page name / username */
+    facebook: process.env.NEXT_PUBLIC_FACEBOOK_HANDLE ?? "",
   },
 } as const;
 
