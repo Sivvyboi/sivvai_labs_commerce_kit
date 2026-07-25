@@ -1,0 +1,11 @@
+export * as productService from "./product-service";
+export * as categoryService from "./category-service";
+export * as inventoryService from "./inventory-service";
+export * as cartService from "./cart-service";
+export * as checkoutService from "./checkout-service";
+export * as paymentService from "./payment-service";
+export * as orderService from "./order-service";
+export * as shippingService from "./shipping-service";
+export * as notificationService from "./notification-service";
+export * as storeService from "./store-service";
+export * as promotionService from "./promotion-service";
