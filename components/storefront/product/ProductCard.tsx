@@ -5,12 +5,11 @@
  *
  * Core customer-facing product card component.
  *
- * Features:
+ * Connected to `useCart` hook for Quick Add:
  *  - Responsive image container with next/image
  *  - Title, Category, Price, and StockBadge
- *  - Quick Add button (+ icon) emitting callback without navigating
- *  - Card-wide navigation via Next.js Link
- *  - Pure UI component (no fetch/API/Zustand side effects)
+ *  - Quick Add button (+ icon) invokes `useCart().addItem()` and opens drawer without page navigation
+ *  - Event isolation stops link navigation on quick add
  */
 
 import * as React from "react";
@@ -19,13 +18,14 @@ import Image from "next/image";
 import type { ProductWithDetails } from "@/lib/db/products";
 import { Price } from "@/components/shared/Price";
 import { StockBadge } from "@/components/shared/StockBadge";
+import { useCart } from "@/features/storefront/hooks/useCart";
 import { ROUTES } from "@/constants/routes";
-import { ShoppingBag, Plus } from "lucide-react";
+import { ShoppingBag, Plus, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 
 export interface ProductCardProps extends React.HTMLAttributes<HTMLDivElement> {
   product: ProductWithDetails;
-  /** Callback emitted when the quick-add button is clicked */
+  /** Optional override callback when the quick-add button is clicked */
   onQuickAdd?: (product: ProductWithDetails) => void;
 }
 
@@ -35,6 +35,9 @@ export function ProductCard({
   className,
   ...props
 }: ProductCardProps) {
+  const { addItem } = useCart();
+  const [isAdding, setIsAdding] = React.useState(false);
+
   // Determine primary image
   const primaryImage =
     product.images?.find((img) => img.is_primary) ?? product.images?.[0];
@@ -48,13 +51,29 @@ export function ProductCard({
       product.variants?.some((v) => v.status === "active"));
   const stockQuantity = isAvailable ? undefined : 0;
 
+  const firstVariantId = product.variants?.[0]?.id;
   const productUrl = ROUTES.product(product.slug);
 
-  const handleQuickAddClick = (e: React.MouseEvent<HTMLButtonElement>) => {
+  const handleQuickAddClick = async (e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
     e.stopPropagation();
+
     if (onQuickAdd) {
       onQuickAdd(product);
+      return;
+    }
+
+    if (!firstVariantId || !isAvailable || isAdding) return;
+
+    setIsAdding(true);
+    try {
+      await addItem({
+        variantId: firstVariantId,
+        quantity: 1,
+        unitPriceSnapshot: Number(product.base_price),
+      });
+    } finally {
+      setIsAdding(false);
     }
   };
 
@@ -127,10 +146,14 @@ export function ProductCard({
             type="button"
             onClick={handleQuickAddClick}
             aria-label={`Add ${product.name} to cart`}
-            disabled={!isAvailable}
+            disabled={!isAvailable || isAdding}
             className="flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--kit-surface)] border border-[var(--kit-border)] text-[var(--kit-text-primary)] hover:bg-[var(--kit-accent)] hover:text-[var(--kit-accent-fg)] hover:border-[var(--kit-accent)] disabled:opacity-40 disabled:cursor-not-allowed transition-colors shrink-0 min-h-[36px] min-w-[36px]"
           >
-            <Plus className="h-4 w-4" />
+            {isAdding ? (
+              <Loader2 className="h-4 w-4 animate-spin text-[var(--kit-accent)]" />
+            ) : (
+              <Plus className="h-4 w-4" />
+            )}
           </button>
         </div>
       </div>
