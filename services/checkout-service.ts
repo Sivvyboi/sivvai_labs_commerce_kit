@@ -66,7 +66,7 @@ export async function initiateCheckout(input: InitiateCheckoutInput) {
     shipping_address: input.shippingAddress as Json,
     fulfilment_method_id: input.shippingMethodId ?? null,
     promo_code: input.promoCode ?? null,
-    status: "pending",
+    status: "open",
     expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
   });
 

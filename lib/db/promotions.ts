@@ -1,5 +1,6 @@
 import "server-only";
 import { createClient } from "../supabase/server";
+import { createAdminClient } from "../supabase/admin";
 import type { Database } from "@/types";
 
 export type PromotionRow = Database["public"]["Tables"]["promotions"]["Row"];
@@ -22,7 +23,7 @@ export async function findCouponByCode(code: string): Promise<CouponCodeWithProm
 }
 
 export async function incrementCouponUsage(couponId: string): Promise<CouponCodeRow> {
-  const supabase = await createClient();
+  const supabase = createAdminClient();
   const { data: existing, error: fetchError } = await supabase
     .from("coupon_codes")
     .select("current_uses")

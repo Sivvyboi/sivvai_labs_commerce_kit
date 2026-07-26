@@ -945,7 +945,7 @@ export interface Database {
       payment_attempts: {
         Row: {
           id: string;
-          order_id: string;
+          order_id: string | null;
           attempt_number: number;
           provider: string;
           provider_reference: string | null;
@@ -961,7 +961,7 @@ export interface Database {
         };
         Insert: {
           id?: string;
-          order_id: string;
+          order_id?: string | null;
           attempt_number?: number;
           provider: string;
           provider_reference?: string | null;
@@ -977,7 +977,7 @@ export interface Database {
         };
         Update: {
           id?: string;
-          order_id?: string;
+          order_id?: string | null;
           attempt_number?: number;
           provider?: string;
           provider_reference?: string | null;

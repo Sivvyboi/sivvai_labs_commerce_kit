@@ -1,5 +1,6 @@
 import "server-only";
 import { createClient } from "../supabase/server";
+import { createAdminClient } from "../supabase/admin";
 import type { Database } from "@/types";
 
 export type OrderRow = Database["public"]["Tables"]["orders"]["Row"];
@@ -15,7 +16,7 @@ export async function createOrder(
   orderData: OrderInsert,
   linesData: Array<Omit<OrderLineInsert, "order_id">>
 ): Promise<OrderWithLines> {
-  const supabase = await createClient();
+  const supabase = createAdminClient();
 
   const { data: order, error: orderError } = await supabase
     .from("orders")
@@ -80,7 +81,7 @@ export async function findCustomerOrders(customerId: string): Promise<OrderWithL
 }
 
 export async function updateOrderStatus(id: string, status: string): Promise<OrderRow> {
-  const supabase = await createClient();
+  const supabase = createAdminClient();
   const { data, error } = await supabase
     .from("orders")
     .update({ status })

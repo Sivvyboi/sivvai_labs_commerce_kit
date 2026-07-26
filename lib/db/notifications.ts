@@ -1,12 +1,13 @@
 import "server-only";
 import { createClient } from "../supabase/server";
+import { createAdminClient } from "../supabase/admin";
 import type { Database } from "@/types";
 
 export type NotificationLogRow = Database["public"]["Tables"]["notification_logs"]["Row"];
 export type NotificationLogInsert = Database["public"]["Tables"]["notification_logs"]["Insert"];
 
 export async function createNotificationLog(data: NotificationLogInsert): Promise<NotificationLogRow> {
-  const supabase = await createClient();
+  const supabase = createAdminClient();
   const { data: log, error } = await supabase
     .from("notification_logs")
     .insert(data)

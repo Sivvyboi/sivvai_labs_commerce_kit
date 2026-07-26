@@ -1,5 +1,6 @@
 import "server-only";
 import { createClient } from "../supabase/server";
+import { createAdminClient } from "../supabase/admin";
 import type { Database } from "@/types";
 
 export type InventoryRecordRow = Database["public"]["Tables"]["inventory_records"]["Row"];
@@ -25,7 +26,7 @@ export async function createReservation(params: {
   quantity: number;
   expiresAt: string;
 }): Promise<InventoryReservationRow> {
-  const supabase = await createClient();
+  const supabase = createAdminClient();
   const { data, error } = await supabase
     .from("inventory_reservations")
     .insert({
@@ -47,7 +48,7 @@ export async function updateReservationStatus(
   reservationId: string,
   status: Database["public"]["Enums"]["reservation_status"]
 ): Promise<InventoryReservationRow> {
-  const supabase = await createClient();
+  const supabase = createAdminClient();
   const { data, error } = await supabase
     .from("inventory_reservations")
     .update({ status })
@@ -70,7 +71,7 @@ export async function logStockMovement(params: {
   reason?: string;
   referenceId?: string;
 }): Promise<StockMovementRow> {
-  const supabase = await createClient();
+  const supabase = createAdminClient();
   const { data, error } = await supabase
     .from("stock_movements")
     .insert({
@@ -91,7 +92,7 @@ export async function updateInventoryOnHand(
   inventoryRecordId: string,
   onHandQuantity: number
 ): Promise<InventoryRecordRow> {
-  const supabase = await createClient();
+  const supabase = createAdminClient();
   const { data, error } = await supabase
     .from("inventory_records")
     .update({ on_hand_quantity: onHandQuantity })

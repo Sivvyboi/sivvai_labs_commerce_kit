@@ -65,7 +65,7 @@ export async function createOrderFromCheckout(
       order_number: orderNumber,
       customer_id: session.customer_id ?? null,
       guest_contact: session.guest_contact ?? null,
-      status: "paid",
+      status: "completed",
       shipping_address: session.shipping_address,
       billing_address: session.shipping_address,
       shipping_method_snapshot: null,

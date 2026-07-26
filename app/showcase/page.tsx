@@ -58,7 +58,7 @@ const mockProduct: ProductWithDetails = {
   seo_description: null,
   visibility: "visible",
   published_at: new Date().toISOString(),
-  status: "active",
+  status: "published",
   created_at: new Date().toISOString(),
   updated_at: new Date().toISOString(),
   archived_at: null,

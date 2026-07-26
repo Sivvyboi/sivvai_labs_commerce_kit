@@ -46,7 +46,7 @@ export async function initiatePayment(params: {
 
   // 5. Record payment attempt
   const attempt = await paymentRepo.createPaymentAttempt({
-    order_id: "pending",
+    order_id: null,
     attempt_number: 1,
     provider: provider.name,
     idempotency_key: idempotencyKey,
@@ -111,7 +111,7 @@ export async function processWebhook(
     // Update attempt with resolved order_id and status
     await paymentRepo.updatePaymentAttempt(attempt.id, {
       order_id: order.id,
-      status: "successful",
+      status: "confirmed",
       provider_reference: reference,
       confirmed_at: new Date().toISOString(),
       metadata: JSON.parse(JSON.stringify(verification)) as Json,

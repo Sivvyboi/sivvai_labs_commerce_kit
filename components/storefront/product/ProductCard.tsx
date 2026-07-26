@@ -46,7 +46,7 @@ export function ProductCard({
 
   // Determine stock availability from product & variant status
   const isAvailable =
-    product.status === "active" &&
+    product.status === "published" &&
     (product.variants?.length === 0 ||
       product.variants?.some((v) => v.status === "active"));
   const stockQuantity = isAvailable ? undefined : 0;

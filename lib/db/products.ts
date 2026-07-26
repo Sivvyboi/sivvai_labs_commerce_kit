@@ -32,7 +32,7 @@ export async function findProducts(params: FindProductsParams = {}): Promise<{ d
   if (params.status) {
     query = query.eq("status", params.status);
   } else {
-    query = query.eq("status", "active");
+    query = query.eq("status", "published");
   }
 
   if (params.search) {

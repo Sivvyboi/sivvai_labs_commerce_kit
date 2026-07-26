@@ -1,5 +1,6 @@
 import "server-only";
 import { createClient } from "../supabase/server";
+import { createAdminClient } from "../supabase/admin";
 import type { Database } from "@/types";
 
 export type PaymentAttemptRow = Database["public"]["Tables"]["payment_attempts"]["Row"];
@@ -9,7 +10,7 @@ export type PaymentEventRow = Database["public"]["Tables"]["payment_events"]["Ro
 export type PaymentEventInsert = Database["public"]["Tables"]["payment_events"]["Insert"];
 
 export async function createPaymentAttempt(data: PaymentAttemptInsert): Promise<PaymentAttemptRow> {
-  const supabase = await createClient();
+  const supabase = createAdminClient();
   const { data: attempt, error } = await supabase
     .from("payment_attempts")
     .insert(data)
@@ -24,7 +25,7 @@ export async function updatePaymentAttempt(
   id: string,
   data: PaymentAttemptUpdate
 ): Promise<PaymentAttemptRow> {
-  const supabase = await createClient();
+  const supabase = createAdminClient();
   const { data: updated, error } = await supabase
     .from("payment_attempts")
     .update(data)
@@ -53,7 +54,7 @@ export async function findPaymentAttemptByReference(
 export async function logPaymentEvent(
   data: PaymentEventInsert
 ): Promise<PaymentEventRow> {
-  const supabase = await createClient();
+  const supabase = createAdminClient();
   const { data: event, error } = await supabase
     .from("payment_events")
     .insert(data)

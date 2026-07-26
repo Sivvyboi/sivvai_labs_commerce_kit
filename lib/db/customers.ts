@@ -1,5 +1,6 @@
 import "server-only";
 import { createClient } from "../supabase/server";
+import { createAdminClient } from "../supabase/admin";
 import type { Database } from "@/types";
 
 export type CustomerRow = Database["public"]["Tables"]["customers"]["Row"];
@@ -35,7 +36,7 @@ export async function findCustomerByEmail(email: string): Promise<CustomerWithAd
 }
 
 export async function createCustomer(data: CustomerInsert): Promise<CustomerRow> {
-  const supabase = await createClient();
+  const supabase = createAdminClient();
   const { data: customer, error } = await supabase
     .from("customers")
     .insert(data)

@@ -63,7 +63,7 @@ export async function finalizeStockDeduction(params: {
   // 2. Log stock movement
   await inventoryRepo.logStockMovement({
     inventoryRecordId: inv.id,
-    movementType: "deduction",
+    movementType: "outbound",
     quantityDelta: -params.quantity,
     reason: "order_fulfilled",
     referenceId: params.orderId,
