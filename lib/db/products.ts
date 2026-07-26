@@ -15,37 +15,119 @@ export type ProductWithDetails = ProductRow & {
   images: ProductImageRow[];
 };
 
+export type ProductSortOption =
+  | "newest"
+  | "oldest"
+  | "price-asc"
+  | "price-desc"
+  | "name-asc"
+  | "name-desc"
+  | "featured";
+
 export interface FindProductsParams {
   categorySlug?: string;
+  featured?: boolean;
+  minPrice?: number;
+  maxPrice?: number;
+  sort?: ProductSortOption;
   status?: string;
   limit?: number;
   offset?: number;
   search?: string;
 }
 
-export async function findProducts(params: FindProductsParams = {}): Promise<{ data: ProductWithDetails[]; count: number }> {
+export async function findProducts(
+  params: FindProductsParams = {}
+): Promise<{ data: ProductWithDetails[]; count: number }> {
   const supabase = await createClient();
+
+  // If categorySlug is specified, fetch category ID first or join
+  let categoryId: string | undefined;
+  if (params.categorySlug) {
+    const { data: cat } = await supabase
+      .from("categories")
+      .select("id")
+      .eq("slug", params.categorySlug)
+      .maybeSingle();
+
+    if (cat) {
+      categoryId = cat.id;
+    }
+  }
+
   let query = supabase
     .from("products")
-    .select("*, category:categories(*), variants:product_variants(*), images:product_images(*)");
+    .select("*, category:categories(*), variants:product_variants(*), images:product_images(*)", {
+      count: "exact",
+    });
 
+  // Status Filter (default: published)
   if (params.status) {
     query = query.eq("status", params.status);
   } else {
     query = query.eq("status", "published");
   }
 
-  if (params.search) {
-    query = query.ilike("name", `%${params.search}%`);
+  // Category Filter
+  if (categoryId) {
+    query = query.eq("category_id", categoryId);
   }
 
+  // Featured Filter
+  if (params.featured !== undefined) {
+    query = query.eq("is_featured", params.featured);
+  }
+
+  // Price Range Filter (base_price in minor units / kobo)
+  if (params.minPrice !== undefined && !isNaN(params.minPrice)) {
+    query = query.gte("base_price", params.minPrice);
+  }
+  if (params.maxPrice !== undefined && !isNaN(params.maxPrice)) {
+    query = query.lte("base_price", params.maxPrice);
+  }
+
+  // Search Filter
+  if (params.search) {
+    query = query.ilike("name", `%${params.search.trim()}%`);
+  }
+
+  // Sorting
+  const sort = params.sort ?? "newest";
+  switch (sort) {
+    case "oldest":
+      query = query.order("created_at", { ascending: true });
+      break;
+    case "price-asc":
+      query = query.order("base_price", { ascending: true });
+      break;
+    case "price-desc":
+      query = query.order("base_price", { ascending: false });
+      break;
+    case "name-asc":
+      query = query.order("name", { ascending: true });
+      break;
+    case "name-desc":
+      query = query.order("name", { ascending: false });
+      break;
+    case "featured":
+      query = query
+        .order("is_featured", { ascending: false })
+        .order("created_at", { ascending: false });
+      break;
+    case "newest":
+    default:
+      query = query.order("created_at", { ascending: false });
+      break;
+  }
+
+  // Pagination Range
   if (params.limit) {
     const from = params.offset || 0;
     const to = from + params.limit - 1;
     query = query.range(from, to);
   }
 
-  const { data, error, count } = await query.order("created_at", { ascending: false });
+  const { data, error, count } = await query;
   if (error) throw error;
   return { data: (data || []) as ProductWithDetails[], count: count || 0 };
 }

@@ -21,11 +21,13 @@ import { siteConfig } from "@/config/site";
 import { storefrontNav } from "@/config/storefront";
 import { useCartStore } from "@/features/storefront/store/cart.store";
 import { MobileMenuDrawer } from "./MobileMenuDrawer";
+import { SearchOverlay } from "./SearchOverlay";
 import { Search, ShoppingBag, Menu } from "lucide-react";
 import { ROUTES } from "@/constants/routes";
 
 export function StorefrontHeader() {
   const [isMenuOpen, setIsMenuOpen] = React.useState(false);
+  const [isSearchOpen, setIsSearchOpen] = React.useState(false);
   const { cartCount, openDrawer } = useCartStore();
 
   return (
@@ -65,14 +67,15 @@ export function StorefrontHeader() {
 
           {/* Right: Search & Cart Action Icons */}
           <div className="flex items-center gap-1 sm:gap-2">
-            {/* Search Trigger */}
-            <Link
-              href={ROUTES.search}
-              aria-label="Search catalog"
+            {/* Search Overlay Trigger */}
+            <button
+              type="button"
+              onClick={() => setIsSearchOpen(true)}
+              aria-label="Open search overlay"
               className="flex h-10 w-10 items-center justify-center rounded-lg text-[var(--kit-text-primary)] hover:bg-[var(--kit-surface)] transition-colors"
             >
               <Search className="h-5 w-5" />
-            </Link>
+            </button>
 
             {/* Cart Drawer Trigger */}
             <button
@@ -90,6 +93,12 @@ export function StorefrontHeader() {
           </div>
         </div>
       </header>
+
+      {/* Instant Search Overlay */}
+      <SearchOverlay
+        isOpen={isSearchOpen}
+        onClose={() => setIsSearchOpen(false)}
+      />
 
       {/* Slide-in Mobile Drawer */}
       <MobileMenuDrawer

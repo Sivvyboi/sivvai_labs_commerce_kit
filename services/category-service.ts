@@ -1,8 +1,15 @@
+/**
+ * services/category-service.ts
+ *
+ * Category domain service layer.
+ * All category operations for storefront pages pass through here.
+ */
+
 import * as categoryRepo from "@/lib/db/categories";
 import type { CategoryRow } from "@/lib/db/categories";
 import { NotFoundError } from "@/lib/errors";
 
-type CategoryWithChildren = CategoryRow & { children: CategoryWithChildren[] };
+export type CategoryWithChildren = CategoryRow & { children: CategoryWithChildren[] };
 
 function buildChildren(
   all: CategoryRow[],
@@ -16,6 +23,12 @@ function buildChildren(
     }));
 }
 
+/** Fetches all active non-archived categories flat. */
+export async function getCategories(): Promise<CategoryRow[]> {
+  return categoryRepo.findCategories();
+}
+
+/** Fetches categories structured into a parent-child tree. */
 export async function getCategoryTree(): Promise<CategoryWithChildren[]> {
   const categories = await categoryRepo.findCategories();
   return categories
@@ -26,7 +39,8 @@ export async function getCategoryTree(): Promise<CategoryWithChildren[]> {
     }));
 }
 
-export async function getCategoryBySlug(slug: string) {
+/** Fetches a single category by slug. Throws NotFoundError if missing. */
+export async function getCategoryBySlug(slug: string): Promise<CategoryRow> {
   const category = await categoryRepo.findCategoryBySlug(slug);
   if (!category) {
     throw new NotFoundError("Category", slug);
