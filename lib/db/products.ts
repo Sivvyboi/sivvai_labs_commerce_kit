@@ -9,10 +9,18 @@ export type ProductUpdate = Database["public"]["Tables"]["products"]["Update"];
 export type ProductVariantRow = Database["public"]["Tables"]["product_variants"]["Row"];
 export type ProductImageRow = Database["public"]["Tables"]["product_images"]["Row"];
 
+export type ProductGroupRow = Database["public"]["Tables"]["option_groups"]["Row"];
+export type ProductValueRow = Database["public"]["Tables"]["option_values"]["Row"];
+
+export type OptionGroupWithValues = ProductGroupRow & {
+  values: ProductValueRow[];
+};
+
 export type ProductWithDetails = ProductRow & {
   category: CategoryRow | null;
   variants: ProductVariantRow[];
   images: ProductImageRow[];
+  option_groups?: OptionGroupWithValues[];
 };
 
 export type ProductSortOption =
@@ -57,7 +65,7 @@ export async function findProducts(
 
   let query = supabase
     .from("products")
-    .select("*, category:categories(*), variants:product_variants(*), images:product_images(*)", {
+    .select("*, category:categories(*), variants:product_variants(*), images:product_images(*), option_groups(*, values:option_values(*))", {
       count: "exact",
     });
 
@@ -129,31 +137,31 @@ export async function findProducts(
 
   const { data, error, count } = await query;
   if (error) throw error;
-  return { data: (data || []) as ProductWithDetails[], count: count || 0 };
+  return { data: (data || []) as unknown as ProductWithDetails[], count: count || 0 };
 }
 
 export async function findProductById(id: string): Promise<ProductWithDetails | null> {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("products")
-    .select("*, category:categories(*), variants:product_variants(*), images:product_images(*)")
+    .select("*, category:categories(*), variants:product_variants(*), images:product_images(*), option_groups(*, values:option_values(*))")
     .eq("id", id)
     .single();
 
   if (error || !data) return null;
-  return data as ProductWithDetails;
+  return data as unknown as ProductWithDetails;
 }
 
 export async function findProductBySlug(slug: string): Promise<ProductWithDetails | null> {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("products")
-    .select("*, category:categories(*), variants:product_variants(*), images:product_images(*)")
+    .select("*, category:categories(*), variants:product_variants(*), images:product_images(*), option_groups(*, values:option_values(*))")
     .eq("slug", slug)
     .single();
 
   if (error || !data) return null;
-  return data as ProductWithDetails;
+  return data as unknown as ProductWithDetails;
 }
 
 export async function createProduct(data: ProductInsert): Promise<ProductRow> {
