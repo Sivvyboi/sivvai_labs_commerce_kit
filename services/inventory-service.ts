@@ -4,7 +4,7 @@ import { InsufficientStockError } from "@/lib/errors";
 
 export async function checkAvailableStock(variantId: string): Promise<number> {
   const inv = await inventoryRepo.getVariantInventory(variantId);
-  if (!inv) return 0;
+  if (!inv || !inv.track_inventory) return 9999;
   return inv.on_hand_quantity - inv.reserved_quantity;
 }
 
