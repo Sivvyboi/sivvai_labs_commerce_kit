@@ -37,7 +37,8 @@ GRANT SELECT, INSERT, UPDATE ON carts TO anon, authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON cart_lines TO anon, authenticated;
 GRANT SELECT, INSERT, UPDATE ON checkout_sessions TO anon, authenticated;
 
--- 5. Customer Domain (Authenticated Self-Service)
+-- 5. Customer Domain (Authenticated Self-Service & Anon Cart RLS Evaluation)
+GRANT SELECT ON customers TO anon;
 GRANT SELECT, UPDATE ON customers TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON customer_addresses TO authenticated;
 

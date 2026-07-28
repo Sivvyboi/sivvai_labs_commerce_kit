@@ -126,3 +126,55 @@ export async function getOrderDetails(orderId: string) {
 export async function getCustomerOrders(customerId: string) {
   return orderRepo.findCustomerOrders(customerId);
 }
+
+export async function lookupGuestOrder(orderNumber: string, email: string) {
+  const order = await orderRepo.findOrderByNumberAndEmail(orderNumber, email);
+  if (!order) {
+    throw new NotFoundError("Order", `${orderNumber} for email ${email}`);
+  }
+  return order;
+}
+
+export interface ReorderResult {
+  addedCount: number;
+  skippedItems: Array<{ productName: string; reason: string }>;
+}
+
+export async function reorderItemsFromOrder(
+  orderId: string,
+  cartId: string
+): Promise<ReorderResult> {
+  const order = await getOrderDetails(orderId);
+  const skippedItems: Array<{ productName: string; reason: string }> = [];
+  let addedCount = 0;
+
+  for (const line of order.lines) {
+    if (!line.variant_id) {
+      skippedItems.push({
+        productName: line.product_name_snapshot,
+        reason: "Item variant is no longer available",
+      });
+      continue;
+    }
+
+    try {
+      // Verify inventory availability before adding
+      await inventoryService.verifyStockAvailability(line.variant_id, line.quantity);
+      await cartRepo.addCartItem({
+        cartId,
+        variantId: line.variant_id,
+        quantity: line.quantity,
+        unitPriceSnapshot: line.unit_price_snapshot,
+      });
+      addedCount++;
+    } catch (err) {
+      skippedItems.push({
+        productName: line.product_name_snapshot,
+        reason: err instanceof Error ? err.message : "Out of stock or unavailable",
+      });
+    }
+  }
+
+  return { addedCount, skippedItems };
+}
+

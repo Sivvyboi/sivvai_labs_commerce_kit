@@ -63,12 +63,26 @@ export async function updateCustomer(
   return updated;
 }
 
+export async function findCustomerByAuthId(authId: string): Promise<CustomerWithAddresses | null> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("customers")
+    .select("*, addresses:customer_addresses(*)")
+    .eq("auth_id", authId)
+    .maybeSingle();
+
+  if (error || !data) return null;
+  return data as CustomerWithAddresses;
+}
+
 export async function findCustomerAddresses(customerId: string): Promise<CustomerAddressRow[]> {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("customer_addresses")
     .select("*")
-    .eq("customer_id", customerId);
+    .eq("customer_id", customerId)
+    .order("is_default", { ascending: false })
+    .order("created_at", { ascending: false });
 
   if (error) throw error;
   return data || [];
@@ -85,3 +99,58 @@ export async function addCustomerAddress(data: CustomerAddressInsert): Promise<C
   if (error || !address) throw error || new Error("Failed to add customer address");
   return address;
 }
+
+export async function updateCustomerAddress(
+  id: string,
+  customerId: string,
+  data: Partial<CustomerAddressInsert>
+): Promise<CustomerAddressRow> {
+  const supabase = await createClient();
+  const { data: updated, error } = await supabase
+    .from("customer_addresses")
+    .update(data)
+    .eq("id", id)
+    .eq("customer_id", customerId)
+    .select()
+    .single();
+
+  if (error || !updated) throw error || new Error("Failed to update customer address");
+  return updated;
+}
+
+export async function deleteCustomerAddress(id: string, customerId: string): Promise<boolean> {
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("customer_addresses")
+    .delete()
+    .eq("id", id)
+    .eq("customer_id", customerId);
+
+  if (error) throw error;
+  return true;
+}
+
+export async function setDefaultCustomerAddress(
+  addressId: string,
+  customerId: string
+): Promise<CustomerAddressRow> {
+  const supabase = await createClient();
+  // 1. Unset existing defaults for this customer
+  await supabase
+    .from("customer_addresses")
+    .update({ is_default: false })
+    .eq("customer_id", customerId);
+
+  // 2. Set target address to default
+  const { data, error } = await supabase
+    .from("customer_addresses")
+    .update({ is_default: true })
+    .eq("id", addressId)
+    .eq("customer_id", customerId)
+    .select()
+    .single();
+
+  if (error || !data) throw error || new Error("Failed to set default address");
+  return data;
+}
+
