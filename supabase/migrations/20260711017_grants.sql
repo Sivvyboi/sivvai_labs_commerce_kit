@@ -5,8 +5,10 @@
 -- while maintaining least-privilege principles and RLS controls.
 -- =============================================================================
 
--- 1. Schema Access
-GRANT USAGE ON SCHEMA public TO anon, authenticated;
+-- 1. Schema Access & Service Role Privileges
+GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO service_role;
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO service_role;
 
 -- 2. Catalog & Store Config (Public Reads)
 GRANT SELECT ON categories TO anon, authenticated;

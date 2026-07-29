@@ -22,7 +22,7 @@ import { storefrontNav } from "@/config/storefront";
 import { useCartStore } from "@/features/storefront/store/cart.store";
 import { MobileMenuDrawer } from "./MobileMenuDrawer";
 import { SearchOverlay } from "./SearchOverlay";
-import { Search, ShoppingBag, Menu } from "lucide-react";
+import { Search, ShoppingBag, Menu, User } from "lucide-react";
 import { ROUTES } from "@/constants/routes";
 
 export function StorefrontHeader() {
@@ -65,7 +65,7 @@ export function StorefrontHeader() {
             ))}
           </nav>
 
-          {/* Right: Search & Cart Action Icons */}
+          {/* Right: Search, Account & Cart Action Icons */}
           <div className="flex items-center gap-1 sm:gap-2">
             {/* Search Overlay Trigger */}
             <button
@@ -76,6 +76,15 @@ export function StorefrontHeader() {
             >
               <Search className="h-5 w-5" />
             </button>
+
+            {/* Account Link */}
+            <Link
+              href="/account"
+              aria-label="My Account"
+              className="flex h-10 w-10 items-center justify-center rounded-lg text-[var(--kit-text-primary)] hover:bg-[var(--kit-surface)] transition-colors"
+            >
+              <User className="h-5 w-5" />
+            </Link>
 
             {/* Cart Drawer Trigger */}
             <button

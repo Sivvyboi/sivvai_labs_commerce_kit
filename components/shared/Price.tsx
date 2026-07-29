@@ -4,6 +4,7 @@
  * Reusable currency formatter component.
  * Supports current price, compare-at price (strike-through), and size variations.
  * Server and Client Component compatible.
+ * Renders an inline <span> to remain valid phrasing content inside <p>, <h3>, buttons, etc.
  */
 
 import * as React from "react";
@@ -11,7 +12,7 @@ import { formatCurrency } from "@/lib/utils/format";
 import { localizationConfig } from "@/config/localization";
 import { cn } from "@/lib/utils/cn";
 
-export interface PriceProps extends React.HTMLAttributes<HTMLDivElement> {
+export interface PriceProps extends React.HTMLAttributes<HTMLSpanElement> {
   /** Numeric price amount in major units (e.g. 15000 for ₦15,000.00) */
   amount: number;
   /** Optional compare-at price for sale items */
@@ -51,7 +52,7 @@ export function Price({
     : null;
 
   return (
-    <div
+    <span
       className={cn("inline-flex items-baseline gap-1.5 flex-wrap", className)}
       aria-label={
         isOnSale
@@ -76,6 +77,6 @@ export function Price({
           {formattedOriginalPrice}
         </span>
       )}
-    </div>
+    </span>
   );
 }

@@ -10,7 +10,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCartStore } from "@/features/storefront/store/cart.store";
-import { Home, LayoutGrid, Search, ShoppingBag, MessageCircle } from "lucide-react";
+import { Home, LayoutGrid, Search, ShoppingBag, User } from "lucide-react";
 import { ROUTES } from "@/constants/routes";
 import { cn } from "@/lib/utils/cn";
 
@@ -46,9 +46,9 @@ export function MobileBottomNav() {
       badge: cartCount > 0 ? cartCount : undefined,
     },
     {
-      label: "Help",
-      href: ROUTES.contact,
-      icon: MessageCircle,
+      label: "Account",
+      href: "/account",
+      icon: User,
       exact: false,
     },
   ];

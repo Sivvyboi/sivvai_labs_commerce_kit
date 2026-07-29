@@ -34,6 +34,8 @@ export interface NavLink {
 export const storefrontNav: NavLink[] = [
   { label: "Shop All", href: "/catalog" },
   { label: "Collections", href: "/catalog?featured=true" },
+  { label: "Track Order", href: "/orders/lookup" },
+  { label: "Account", href: "/account" },
   { label: "About", href: "/about" },
 ];
 
@@ -228,6 +230,8 @@ export const footerColumns: FooterColumnConfig[] = [
   {
     heading: "Support",
     links: [
+      { label: "Track Order", href: "/orders/lookup" },
+      { label: "My Account", href: "/account" },
       { label: "Contact Us", href: "/contact" },
       { label: "About Us", href: "/about" },
       { label: "FAQs", href: "/about#faq" },
