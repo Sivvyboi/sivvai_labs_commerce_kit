@@ -152,3 +152,12 @@ export async function setDefaultAddress(
 
   return customerRepo.setDefaultCustomerAddress(addressId, customerId);
 }
+
+// ---------------------------------------------------------------------------
+// Admin service functions
+// ---------------------------------------------------------------------------
+
+export async function getAllCustomers(params: customerRepo.FindAllCustomersParams = {}) {
+  return customerRepo.findAllCustomers(params);
+}
+

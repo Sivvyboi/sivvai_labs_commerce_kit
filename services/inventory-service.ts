@@ -78,3 +78,50 @@ export async function finalizeStockDeduction(params: {
 export async function cancelReservation(reservationId: string) {
   return inventoryRepo.releaseReservation(reservationId);
 }
+
+// ---------------------------------------------------------------------------
+// Admin service functions
+// ---------------------------------------------------------------------------
+
+export async function getInventoryWithVariants() {
+  return inventoryRepo.findAllInventoryWithVariants();
+}
+
+export async function getLowStockItems(threshold = 5) {
+  return inventoryRepo.findLowStockItems(threshold);
+}
+
+export async function getLowStockCount(threshold = 5) {
+  return inventoryRepo.getLowStockCount(threshold);
+}
+
+/**
+ * Admin manual stock adjustment.
+ * Updates on_hand_quantity to the new value and logs a stock_movement record.
+ */
+export async function manualInventoryAdjustment(params: {
+  inventoryRecordId: string;
+  variantId: string;
+  newQuantity: number;
+  reason?: string;
+}) {
+  const inv = await inventoryRepo.getVariantInventory(params.variantId);
+  if (!inv) throw new Error(`Inventory record not found for variant ${params.variantId}`);
+
+  const delta = params.newQuantity - inv.on_hand_quantity;
+
+  // Update on-hand quantity
+  const updated = await inventoryRepo.updateInventoryOnHand(params.inventoryRecordId, params.newQuantity);
+
+  // Log movement
+  if (delta !== 0) {
+    await inventoryRepo.logStockMovement({
+      inventoryRecordId: params.inventoryRecordId,
+      movementType: delta > 0 ? "inbound" : "outbound",
+      quantityDelta: delta,
+      reason: params.reason ?? "manual_adjustment",
+    });
+  }
+
+  return updated;
+}

@@ -45,3 +45,32 @@ export async function validateAndApplyPromoCode(code: string, subtotal: number) 
 export async function recordCouponUsage(couponId: string) {
   return promotionRepo.incrementCouponUsage(couponId);
 }
+
+// ---------------------------------------------------------------------------
+// Admin service functions
+// ---------------------------------------------------------------------------
+
+export async function getAllPromotions() {
+  return promotionRepo.findAllPromotions();
+}
+
+export async function createPromotionAdmin(
+  promoData: promotionRepo.PromotionInsert,
+  code: string,
+  maxUses?: number | null
+) {
+  return promotionRepo.createPromotionWithCoupon(promoData, code, maxUses);
+}
+
+export async function updatePromotionAdmin(id: string, data: promotionRepo.PromotionUpdate) {
+  return promotionRepo.updatePromotion(id, data);
+}
+
+export async function togglePromotionActive(id: string, isActive: boolean) {
+  return promotionRepo.updatePromotion(id, { is_active: isActive });
+}
+
+export async function deletePromotionAdmin(id: string) {
+  return promotionRepo.deletePromotion(id);
+}
+

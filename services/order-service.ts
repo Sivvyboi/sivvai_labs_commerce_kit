@@ -178,3 +178,22 @@ export async function reorderItemsFromOrder(
   return { addedCount, skippedItems };
 }
 
+// ---------------------------------------------------------------------------
+// Admin service functions
+// ---------------------------------------------------------------------------
+
+export async function getAllOrders(params: orderRepo.FindAllOrdersParams = {}) {
+  return orderRepo.findAllOrders(params);
+}
+
+export async function addOrderNote(
+  orderId: string,
+  note: string,
+  isInternal = true
+) {
+  return orderRepo.insertOrderNote({
+    order_id: orderId,
+    body: note,
+    author_type: isInternal ? "admin" : "system",
+  });
+}

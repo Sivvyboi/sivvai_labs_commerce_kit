@@ -3,6 +3,18 @@ import { createClient } from "../supabase/server";
 import { createAdminClient } from "../supabase/admin";
 import type { Database } from "@/types";
 
+export type OrderNoteInsert = Database["public"]["Tables"]["order_notes"]["Insert"];
+
+export interface FindAllOrdersParams {
+  status?: string;
+  /** ISO date string — only orders on/after this date */
+  fromDate?: string;
+  search?: string;
+  limit?: number;
+  offset?: number;
+}
+
+
 export type OrderRow = Database["public"]["Tables"]["orders"]["Row"];
 export type OrderInsert = Database["public"]["Tables"]["orders"]["Insert"];
 export type OrderLineRow = Database["public"]["Tables"]["order_lines"]["Row"];
@@ -122,3 +134,84 @@ export async function updateOrderStatus(id: string, status: string): Promise<Ord
   return data;
 }
 
+// ---------------------------------------------------------------------------
+// Admin queries
+// ---------------------------------------------------------------------------
+
+export async function findAllOrders(
+  params: FindAllOrdersParams = {}
+): Promise<{ data: OrderWithLines[]; count: number }> {
+  const supabase = createAdminClient();
+
+  let query = supabase
+    .from("orders")
+    .select(
+      "*, lines:order_lines(*), customer:customers(*), payment_attempts(*), status_events:order_status_events(*), notes:order_notes(*)",
+      { count: "exact" }
+    )
+    .order("created_at", { ascending: false });
+
+  if (params.status && params.status !== "all") {
+    query = query.eq("status", params.status);
+  }
+
+  if (params.fromDate) {
+    query = query.gte("created_at", params.fromDate);
+  }
+
+  if (params.search) {
+    query = query.ilike("order_number", `%${params.search.trim()}%`);
+  }
+
+  if (params.limit) {
+    const from = params.offset ?? 0;
+    query = query.range(from, from + params.limit - 1);
+  }
+
+  const { data, error, count } = await query;
+  if (error) throw error;
+  return { data: (data ?? []) as OrderWithLines[], count: count ?? 0 };
+}
+
+export async function insertOrderNote(
+  data: OrderNoteInsert
+): Promise<Database["public"]["Tables"]["order_notes"]["Row"]> {
+  const supabase = createAdminClient();
+  const { data: note, error } = await supabase
+    .from("order_notes")
+    .insert(data)
+    .select()
+    .single();
+
+
+  if (error || !note) throw error || new Error("Failed to insert order note");
+  return note;
+}
+
+/** Returns total revenue and order count for all non-cancelled orders */
+export async function getRevenueStats(): Promise<{ totalRevenue: number; totalOrders: number }> {
+  const supabase = createAdminClient();
+  const { data, error } = await supabase
+    .from("orders")
+    .select("grand_total, status")
+    .not("status", "in", '(cancelled,refunded)');
+
+  if (error) throw error;
+  const totalRevenue = (data ?? []).reduce((sum, o) => sum + (o.grand_total ?? 0), 0);
+  return { totalRevenue, totalOrders: (data ?? []).length };
+}
+
+/** Returns count of orders created today (UTC midnight → now) */
+export async function getTodayOrderCount(): Promise<number> {
+  const supabase = createAdminClient();
+  const todayMidnight = new Date();
+  todayMidnight.setUTCHours(0, 0, 0, 0);
+
+  const { count, error } = await supabase
+    .from("orders")
+    .select("id", { count: "exact", head: true })
+    .gte("created_at", todayMidnight.toISOString());
+
+  if (error) throw error;
+  return count ?? 0;
+}

@@ -103,3 +103,60 @@ export async function updateInventoryOnHand(
   if (error || !data) throw error || new Error("Failed to update inventory level");
   return data;
 }
+
+// ---------------------------------------------------------------------------
+// Admin queries
+// ---------------------------------------------------------------------------
+
+export interface InventoryWithVariant extends InventoryRecordRow {
+  variant: {
+    id: string;
+    sku: string | null;
+    price_override: number | null;
+    product: {
+      id: string;
+      name: string;
+      status: string;
+    } | null;
+  } | null;
+}
+
+/** Returns all inventory records joined with variant + product data for the admin table */
+export async function findAllInventoryWithVariants(): Promise<InventoryWithVariant[]> {
+  const supabase = createAdminClient();
+  const { data, error } = await supabase
+    .from("inventory_records")
+    .select("*, variant:product_variants(id, sku, price_override, product:products(id, name, status))")
+    .order("created_at", { ascending: false });
+
+  if (error) throw error;
+  return (data ?? []) as unknown as InventoryWithVariant[];
+}
+
+/**
+ * Returns inventory records where available stock (on_hand - reserved) is at or below the threshold.
+ * Excludes variants whose products are archived.
+ */
+export async function findLowStockItems(threshold = 5): Promise<InventoryWithVariant[]> {
+  const supabase = createAdminClient();
+  // Supabase doesn't support computed column filters directly;
+  // fetch candidates and filter in-process (counts are small)
+  const { data, error } = await supabase
+    .from("inventory_records")
+    .select("*, variant:product_variants(id, sku, price_override, product:products(id, name, status))")
+    .eq("track_inventory", true);
+
+  if (error) throw error;
+
+  return ((data ?? []) as unknown as InventoryWithVariant[]).filter((inv) => {
+    if ((inv.variant?.product?.status ?? "") === "archived") return false;
+    const available = inv.on_hand_quantity - inv.reserved_quantity;
+    return available <= threshold;
+  });
+}
+
+/** Returns count of variants with low stock */
+export async function getLowStockCount(threshold = 5): Promise<number> {
+  const items = await findLowStockItems(threshold);
+  return items.length;
+}

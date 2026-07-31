@@ -154,3 +154,38 @@ export async function setDefaultCustomerAddress(
   return data;
 }
 
+// ---------------------------------------------------------------------------
+// Admin queries
+// ---------------------------------------------------------------------------
+
+export interface FindAllCustomersParams {
+  search?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export async function findAllCustomers(
+  params: FindAllCustomersParams = {}
+): Promise<{ data: CustomerWithAddresses[]; count: number }> {
+  const supabase = createAdminClient();
+
+  let query = supabase
+    .from("customers")
+    .select("*, addresses:customer_addresses(*)", { count: "exact" })
+    .order("created_at", { ascending: false });
+
+  if (params.search) {
+    const term = `%${params.search.trim()}%`;
+    query = query.or(`first_name.ilike.${term},last_name.ilike.${term},email.ilike.${term}`);
+  }
+
+  if (params.limit) {
+    const from = params.offset ?? 0;
+    query = query.range(from, from + params.limit - 1);
+  }
+
+  const { data, error, count } = await query;
+  if (error) throw error;
+  return { data: (data ?? []) as CustomerWithAddresses[], count: count ?? 0 };
+}
+

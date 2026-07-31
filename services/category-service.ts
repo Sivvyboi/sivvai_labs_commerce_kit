@@ -47,3 +47,28 @@ export async function getCategoryBySlug(slug: string): Promise<CategoryRow> {
   }
   return category;
 }
+
+// ---------------------------------------------------------------------------
+// Admin service functions
+// ---------------------------------------------------------------------------
+
+export async function getAllCategories() {
+  return categoryRepo.findAllCategories();
+}
+
+export async function createCategoryAdmin(data: categoryRepo.CategoryInsert) {
+  return categoryRepo.createCategory(data);
+}
+
+export async function updateCategoryAdmin(id: string, data: categoryRepo.CategoryUpdate) {
+  return categoryRepo.updateCategory(id, data);
+}
+
+export async function archiveCategoryAdmin(id: string) {
+  return categoryRepo.archiveCategory(id);
+}
+
+export async function restoreCategoryAdmin(id: string) {
+  return categoryRepo.restoreCategory(id);
+}
+
