@@ -20,6 +20,7 @@ import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { clsx } from "clsx";
+import { logoutAction } from "@/lib/auth/admin-auth";
 import {
   LayoutDashboard,
   Package,
@@ -31,6 +32,7 @@ import {
   Settings,
   Activity,
   ChevronRight,
+  LogOut,
 } from "lucide-react";
 
 interface NavItem {
@@ -152,8 +154,8 @@ export function AdminSidebar() {
         ))}
       </nav>
 
-      {/* Footer — back to storefront */}
-      <div className="border-t border-[var(--kit-border)] p-3">
+      {/* Footer — back to storefront & sign out */}
+      <div className="border-t border-[var(--kit-border)] p-3 space-y-1">
         <Link
           href="/"
           className={clsx(
@@ -163,6 +165,18 @@ export function AdminSidebar() {
         >
           ← Back to Storefront
         </Link>
+        <form action={logoutAction}>
+          <button
+            type="submit"
+            className={clsx(
+              "w-full flex items-center gap-2.5 rounded-[var(--kit-radius-md)] px-3 py-2 text-xs font-medium",
+              "text-[var(--kit-danger)] hover:bg-[var(--kit-danger)]/10 transition-colors"
+            )}
+          >
+            <LogOut size={14} />
+            Sign Out
+          </button>
+        </form>
       </div>
     </aside>
   );

@@ -4,49 +4,41 @@
  * Next.js request proxy — runs on every matching request BEFORE the page renders.
  * Note: Starting with Next.js 16, Middleware is deprecated and renamed to Proxy.
  *
- * Current responsibilities (Step 1 — skeleton only):
- * - Stub for future auth session refresh via Supabase
- * - Stub for future locale detection and redirect
+ * Responsibilities:
+ * - Refresh Supabase auth session cookies on every request via updateSession()
+ * - Protect /admin and /admin/* routes from unauthenticated access
+ * - Redirect authenticated users away from /admin/login to /admin
  *
- * Future responsibilities (Step 2+):
- * - Refresh Supabase auth session cookies on every request
- * - Redirect unauthenticated users away from protected routes
- * - Detect Accept-Language header and redirect to locale-prefixed paths
- * - Inject A/B test flags into request headers
- *
- * IMPORTANT: The matcher below is intentional. It excludes:
- * - Static files (_next/static, _next/image)
- * - Public folder assets (favicon.ico, images, fonts)
- * - The health-check endpoint (so monitoring isn't blocked by auth logic)
- *
- * Reference:
- * → node_modules/next/dist/docs/01-app/01-getting-started/16-proxy.md
+ * Matcher excludes static assets and public files.
  */
 
 import { type NextRequest, NextResponse } from "next/server";
+import { updateSession } from "@/lib/supabase/proxy";
 
-export function proxy(_request: NextRequest): NextResponse {
-  // TODO (Step 4 — Auth): Uncomment and implement Supabase session refresh.
-  //
-  // import { createMiddlewareClient } from "@/lib/supabase/middleware";
-  //
-  // const { supabase, response } = createMiddlewareClient(_request);
-  // await supabase.auth.getSession(); // refreshes session cookie
-  //
-  // const { data: { session } } = await supabase.auth.getSession();
-  // const isProtected = _request.nextUrl.pathname.startsWith("/account") ||
-  //                     _request.nextUrl.pathname.startsWith("/admin");
-  //
-  // if (isProtected && !session) {
-  //   return NextResponse.redirect(new URL(ROUTES.auth.signIn, _request.url));
-  // }
-  //
-  // return response;
+export async function proxy(request: NextRequest): Promise<NextResponse> {
+  const { response, user } = await updateSession(request);
+  const pathname = request.nextUrl.pathname;
 
-  // TODO (Step 5 — i18n): Detect locale from Accept-Language and redirect.
+  const isAdminAuthRoute =
+    pathname === "/admin/login" ||
+    pathname === "/admin/forgot-password" ||
+    pathname === "/admin/reset-password";
 
-  // Pass through with no modifications until the above TODOs are implemented.
-  return NextResponse.next();
+  const isAdminRoute = pathname.startsWith("/admin");
+
+  // Protection: redirect unauthenticated users away from protected admin routes
+  if (isAdminRoute && !isAdminAuthRoute && !user) {
+    const loginUrl = new URL("/admin/login", request.url);
+    loginUrl.searchParams.set("redirectTo", pathname);
+    return NextResponse.redirect(loginUrl);
+  }
+
+  // Redirect authenticated users away from admin auth routes (e.g. login)
+  if (isAdminAuthRoute && user) {
+    return NextResponse.redirect(new URL("/admin", request.url));
+  }
+
+  return response;
 }
 
 export const config = {

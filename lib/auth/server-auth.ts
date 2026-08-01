@@ -1,3 +1,5 @@
+import "server-only";
+import { redirect } from "next/navigation";
 import { createClient } from "../supabase/server";
 
 export async function getCurrentUser() {
@@ -16,7 +18,7 @@ export async function getCurrentUser() {
 export async function requireUser() {
   const user = await getCurrentUser();
   if (!user) {
-    throw new Error("Unauthorized");
+    redirect("/admin/login");
   }
   return user;
 }
