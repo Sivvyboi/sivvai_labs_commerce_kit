@@ -4,16 +4,7 @@
  * components/admin/layout/AdminSidebar.tsx
  *
  * Desktop persistent sidebar for the admin shell.
- * Client Component — needs usePathname for active link detection.
- *
- * Navigation groups:
- *  - Overview
- *  - Catalog (Products, Categories, Inventory)
- *  - Operations (Orders)
- *  - Customers
- *  - Marketing (Promotions)
- *  - Activity
- *  - Settings
+ * Client Component — receives user permissions prop to render filtered nav.
  */
 
 import * as React from "react";
@@ -21,68 +12,12 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { clsx } from "clsx";
 import { logoutAction } from "@/lib/auth/admin-auth";
-import {
-  LayoutDashboard,
-  Package,
-  FolderOpen,
-  Warehouse,
-  ShoppingBag,
-  Users,
-  Tag,
-  Settings,
-  Activity,
-  ChevronRight,
-  LogOut,
-} from "lucide-react";
+import { NAV_GROUPS, filterNavGroups, type NavItem } from "../navigation";
+import { LayoutDashboard, ChevronRight, LogOut } from "lucide-react";
 
-interface NavItem {
-  label: string;
-  href: string;
-  icon: React.ComponentType<{ size?: number; className?: string }>;
-  exact?: boolean;
+interface AdminSidebarProps {
+  permissions?: string[];
 }
-
-interface NavGroup {
-  label: string;
-  items: NavItem[];
-}
-
-const NAV_GROUPS: NavGroup[] = [
-  {
-    label: "Overview",
-    items: [
-      { label: "Dashboard", href: "/admin", icon: LayoutDashboard, exact: true },
-    ],
-  },
-  {
-    label: "Catalog",
-    items: [
-      { label: "Products",   href: "/admin/products",   icon: Package },
-      { label: "Categories", href: "/admin/categories", icon: FolderOpen },
-      { label: "Inventory",  href: "/admin/inventory",  icon: Warehouse },
-    ],
-  },
-  {
-    label: "Operations",
-    items: [
-      { label: "Orders",    href: "/admin/orders",    icon: ShoppingBag },
-      { label: "Customers", href: "/admin/customers", icon: Users },
-    ],
-  },
-  {
-    label: "Marketing",
-    items: [
-      { label: "Promotions", href: "/admin/promotions", icon: Tag },
-    ],
-  },
-  {
-    label: "Store",
-    items: [
-      { label: "Activity", href: "/admin/activity", icon: Activity },
-      { label: "Settings", href: "/admin/settings", icon: Settings },
-    ],
-  },
-];
 
 function NavLink({ item }: { item: NavItem }) {
   const pathname = usePathname();
@@ -115,7 +50,9 @@ function NavLink({ item }: { item: NavItem }) {
   );
 }
 
-export function AdminSidebar() {
+export function AdminSidebar({ permissions = [] }: AdminSidebarProps) {
+  const visibleGroups = filterNavGroups(NAV_GROUPS, permissions);
+
   return (
     <aside
       id="admin-sidebar"
@@ -138,7 +75,7 @@ export function AdminSidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 space-y-5 p-3 pt-4" aria-label="Admin navigation">
-        {NAV_GROUPS.map((group) => (
+        {visibleGroups.map((group) => (
           <div key={group.label}>
             <p className="mb-1 px-3 text-[10px] font-semibold uppercase tracking-wider text-[var(--kit-text-muted)]">
               {group.label}

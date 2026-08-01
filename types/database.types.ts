@@ -19,20 +19,122 @@ export interface Database {
         Row: {
           id: string;
           auth_user_id: string;
+          role_id: string | null;
+          is_active: boolean;
+          is_protected_owner: boolean;
           created_at: string;
           updated_at: string;
         };
         Insert: {
           id?: string;
           auth_user_id: string;
+          role_id?: string | null;
+          is_active?: boolean;
+          is_protected_owner?: boolean;
           created_at?: string;
           updated_at?: string;
         };
         Update: {
           id?: string;
           auth_user_id?: string;
+          role_id?: string | null;
+          is_active?: boolean;
+          is_protected_owner?: boolean;
           created_at?: string;
           updated_at?: string;
+        };
+        Relationships: [];
+      };
+      audit_logs: {
+        Row: {
+          id: string;
+          admin_user_id: string | null;
+          action: string;
+          entity_type: string | null;
+          entity_id: string | null;
+          metadata: Json | null;
+          ip_address: string | null;
+          user_agent: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          admin_user_id?: string | null;
+          action: string;
+          entity_type?: string | null;
+          entity_id?: string | null;
+          metadata?: Json | null;
+          ip_address?: string | null;
+          user_agent?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          admin_user_id?: string | null;
+          action?: string;
+          entity_type?: string | null;
+          entity_id?: string | null;
+          metadata?: Json | null;
+          ip_address?: string | null;
+          user_agent?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      permissions: {
+        Row: {
+          id: string;
+          key: string;
+          description: string | null;
+        };
+        Insert: {
+          id?: string;
+          key: string;
+          description?: string | null;
+        };
+        Update: {
+          id?: string;
+          key?: string;
+          description?: string | null;
+        };
+        Relationships: [];
+      };
+      roles: {
+        Row: {
+          id: string;
+          key: string;
+          name: string;
+          description: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          key: string;
+          name: string;
+          description?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          key?: string;
+          name?: string;
+          description?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      role_permissions: {
+        Row: {
+          role_id: string;
+          permission_id: string;
+        };
+        Insert: {
+          role_id: string;
+          permission_id: string;
+        };
+        Update: {
+          role_id?: string;
+          permission_id?: string;
         };
         Relationships: [];
       };

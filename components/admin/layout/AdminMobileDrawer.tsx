@@ -4,76 +4,20 @@
  * components/admin/layout/AdminMobileDrawer.tsx
  *
  * Slide-in sidebar for mobile/tablet viewports.
- * Client Component — manages open/close state passed from AdminShell.
- * Uses CSS transitions + position:fixed overlay — no external library.
+ * Client Component — receives permissions prop to render filtered nav.
  */
 
 import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { clsx } from "clsx";
-import {
-  LayoutDashboard,
-  Package,
-  FolderOpen,
-  Warehouse,
-  ShoppingBag,
-  Users,
-  Tag,
-  Settings,
-  Activity,
-  X,
-  ChevronRight,
-} from "lucide-react";
-
-interface NavItem {
-  label: string;
-  href: string;
-  icon: React.ComponentType<{ size?: number; className?: string }>;
-  exact?: boolean;
-}
-
-interface NavGroup {
-  label: string;
-  items: NavItem[];
-}
-
-const NAV_GROUPS: NavGroup[] = [
-  {
-    label: "Overview",
-    items: [{ label: "Dashboard", href: "/admin", icon: LayoutDashboard, exact: true }],
-  },
-  {
-    label: "Catalog",
-    items: [
-      { label: "Products",   href: "/admin/products",   icon: Package },
-      { label: "Categories", href: "/admin/categories", icon: FolderOpen },
-      { label: "Inventory",  href: "/admin/inventory",  icon: Warehouse },
-    ],
-  },
-  {
-    label: "Operations",
-    items: [
-      { label: "Orders",    href: "/admin/orders",    icon: ShoppingBag },
-      { label: "Customers", href: "/admin/customers", icon: Users },
-    ],
-  },
-  {
-    label: "Marketing",
-    items: [{ label: "Promotions", href: "/admin/promotions", icon: Tag }],
-  },
-  {
-    label: "Store",
-    items: [
-      { label: "Activity", href: "/admin/activity", icon: Activity },
-      { label: "Settings", href: "/admin/settings", icon: Settings },
-    ],
-  },
-];
+import { NAV_GROUPS, filterNavGroups, type NavItem } from "../navigation";
+import { LayoutDashboard, X, ChevronRight } from "lucide-react";
 
 interface AdminMobileDrawerProps {
   open: boolean;
   onClose: () => void;
+  permissions?: string[];
 }
 
 function NavLink({ item, onClose }: { item: NavItem; onClose: () => void }) {
@@ -100,7 +44,9 @@ function NavLink({ item, onClose }: { item: NavItem; onClose: () => void }) {
   );
 }
 
-export function AdminMobileDrawer({ open, onClose }: AdminMobileDrawerProps) {
+export function AdminMobileDrawer({ open, onClose, permissions = [] }: AdminMobileDrawerProps) {
+  const visibleGroups = filterNavGroups(NAV_GROUPS, permissions);
+
   // Close drawer on Escape key
   React.useEffect(() => {
     function handleKey(e: KeyboardEvent) {
@@ -168,7 +114,7 @@ export function AdminMobileDrawer({ open, onClose }: AdminMobileDrawerProps) {
 
         {/* Navigation */}
         <nav className="flex-1 space-y-5 overflow-y-auto p-3 pt-4">
-          {NAV_GROUPS.map((group) => (
+          {visibleGroups.map((group) => (
             <div key={group.label}>
               <p className="mb-1 px-3 text-[10px] font-semibold uppercase tracking-wider text-[var(--kit-text-muted)]">
                 {group.label}

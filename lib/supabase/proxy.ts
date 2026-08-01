@@ -42,9 +42,10 @@ export async function updateSession(request: NextRequest) {
     }
   );
 
-  // IMPORTANT: getClaims() or getUser() refreshes the auth token if needed
-  // Supabase SSR guidelines recommend getClaims() or getUser() for token refresh in proxy/middleware
-  const { data: claimsData } = await supabase.auth.getClaims();
+  // Use getUser() to validate user session and refresh tokens reliably
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  return { supabase, response, user: claimsData?.claims };
+  return { supabase, response, user };
 }

@@ -1,26 +1,14 @@
 /**
- * app/(admin)/layout.tsx
+ * app/admin/(protected)/layout.tsx
  *
- * Admin Root Layout — Server Component.
- *
- * Structure:
- *  requireAdmin()                — guard (no-op now, swap when auth ships)
- *  <html body> already provided by root layout
- *  ┌─────────────────────────────────────────┐
- *  │ AdminSidebar (desktop, lg:flex hidden)  │
- *  │ AdminShell (Client boundary)            │
- *  │   AdminMobileDrawer (mobile overlay)   │
- *  │   AdminHeader (top bar + breadcrumbs)  │
- *  │   <main> {children} </main>            │
- *  └─────────────────────────────────────────┘
- *
- * Reference:
- * → node_modules/next/dist/docs/01-app/01-getting-started/03-layouts-and-pages.md
+ * Admin Protected Root Layout — Server Component.
+ * Enforces admin access, loads permissions once at the boundary, and passes to layout components.
  */
 
 import * as React from "react";
 import type { Metadata } from "next";
 import { requireAdmin } from "@/lib/auth/admin-guard";
+import { getAdminPermissions } from "@/lib/auth/permissions";
 import { AdminSidebar } from "@/components/admin/layout/AdminSidebar";
 import { AdminShell } from "@/components/admin/layout/AdminShell";
 
@@ -40,17 +28,20 @@ export default async function AdminLayout({
 }: {
   children: React.ReactNode;
 }) {
-  // Enforce admin access — currently a no-op; see lib/auth/admin-guard.ts
+  // Enforce admin authentication
   await requireAdmin();
+
+  // Load user permissions once for the layout components
+  const permissions = await getAdminPermissions();
 
   return (
     <div className="flex h-dvh overflow-hidden bg-[var(--kit-bg)]">
       {/* Persistent sidebar — desktop only */}
-      <AdminSidebar />
+      <AdminSidebar permissions={permissions} />
 
-      {/* Right panel: header + scrollable content area */}
+      {/* Right panel: header + mobile drawer + scrollable content area */}
       <div className="flex flex-1 flex-col overflow-hidden">
-        <AdminShell>{children}</AdminShell>
+        <AdminShell permissions={permissions}>{children}</AdminShell>
       </div>
     </div>
   );

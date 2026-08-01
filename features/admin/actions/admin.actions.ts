@@ -7,15 +7,17 @@
  * Products, Categories, Inventory, Orders, Customers, Promotions, and Store Settings.
  *
  * Pattern:
- * 1. Require admin access via requireAdmin() (no-op until auth enabled).
+ * 1. Enforce RBAC permission via requirePermission("manage_x").
  * 2. Validate input using Zod schemas from lib/validation/admin.
  * 3. Delegate business logic to services.
- * 4. Revalidate affected path(s).
- * 5. Return standardized { success: boolean; data?: T; error?: string } result.
+ * 4. Log audit event via logAuditEvent().
+ * 5. Revalidate affected path(s).
+ * 6. Return standardized { success: boolean; data?: T; error?: string } result.
  */
 
 import { revalidatePath } from "next/cache";
-import { requireAdmin } from "@/lib/auth/admin-guard";
+import { requirePermission } from "@/lib/auth/admin-guard";
+import { logAuditEvent } from "@/services/authz-service";
 
 import * as productService from "@/services/product-service";
 import * as categoryService from "@/services/category-service";
@@ -60,7 +62,7 @@ import {
 
 export async function createProductAction(input: CreateProductAdminInput) {
   try {
-    await requireAdmin();
+    await requirePermission("manage_products");
     const validated = CreateProductAdminSchema.parse(input);
 
     const product = await productService.createProductAdmin({
@@ -78,6 +80,13 @@ export async function createProductAction(input: CreateProductAdminInput) {
       seo_description: validated.seo_description ?? null,
     });
 
+    await logAuditEvent({
+      action: "product.create",
+      entityType: "product",
+      entityId: product.id,
+      metadata: { name: product.name, slug: product.slug },
+    });
+
     revalidatePath("/admin/products");
     revalidatePath("/admin");
     return { success: true, product };
@@ -91,7 +100,7 @@ export async function createProductAction(input: CreateProductAdminInput) {
 
 export async function updateProductAction(input: UpdateProductAdminInput) {
   try {
-    await requireAdmin();
+    await requirePermission("manage_products");
     const validated = UpdateProductAdminSchema.parse(input);
     const { id, ...data } = validated;
 
@@ -101,6 +110,12 @@ export async function updateProductAction(input: UpdateProductAdminInput) {
       category_id: data.category_id ?? undefined,
       seo_title: data.seo_title ?? undefined,
       seo_description: data.seo_description ?? undefined,
+    });
+
+    await logAuditEvent({
+      action: "product.update",
+      entityType: "product",
+      entityId: id,
     });
 
     revalidatePath(`/admin/products/${id}`);
@@ -116,8 +131,15 @@ export async function updateProductAction(input: UpdateProductAdminInput) {
 
 export async function archiveProductAction(id: string) {
   try {
-    await requireAdmin();
+    await requirePermission("manage_products");
     const archived = await productService.archiveProductAdmin(id);
+
+    await logAuditEvent({
+      action: "product.archive",
+      entityType: "product",
+      entityId: id,
+    });
+
     revalidatePath("/admin/products");
     revalidatePath("/admin");
     return { success: true, product: archived };
@@ -131,8 +153,15 @@ export async function archiveProductAction(id: string) {
 
 export async function publishProductAction(id: string) {
   try {
-    await requireAdmin();
+    await requirePermission("manage_products");
     const published = await productService.publishProduct(id);
+
+    await logAuditEvent({
+      action: "product.publish",
+      entityType: "product",
+      entityId: id,
+    });
+
     revalidatePath("/admin/products");
     return { success: true, product: published };
   } catch (err) {
@@ -145,8 +174,16 @@ export async function publishProductAction(id: string) {
 
 export async function duplicateProductAction(id: string) {
   try {
-    await requireAdmin();
+    await requirePermission("manage_products");
     const duplicate = await productService.duplicateProduct(id);
+
+    await logAuditEvent({
+      action: "product.duplicate",
+      entityType: "product",
+      entityId: duplicate.id,
+      metadata: { original_id: id },
+    });
+
     revalidatePath("/admin/products");
     return { success: true, product: duplicate };
   } catch (err) {
@@ -159,12 +196,19 @@ export async function duplicateProductAction(id: string) {
 
 export async function updateVariantAction(input: UpdateVariantAdminInput) {
   try {
-    await requireAdmin();
+    await requirePermission("manage_products");
     const validated = UpdateVariantAdminSchema.parse(input);
     const updated = await productService.updateVariantAdmin(validated.id, {
       sku: validated.sku,
       price_override: validated.price_override,
     });
+
+    await logAuditEvent({
+      action: "variant.update",
+      entityType: "product_variant",
+      entityId: validated.id,
+    });
+
     revalidatePath("/admin/products");
     return { success: true, variant: updated };
   } catch (err) {
@@ -177,8 +221,15 @@ export async function updateVariantAction(input: UpdateVariantAdminInput) {
 
 export async function addProductImageAction(productId: string, url: string, altText?: string, isPrimary = false) {
   try {
-    await requireAdmin();
+    await requirePermission("manage_products");
     const image = await productService.addProductImage(productId, url, altText, isPrimary);
+
+    await logAuditEvent({
+      action: "product_image.add",
+      entityType: "product",
+      entityId: productId,
+    });
+
     revalidatePath(`/admin/products/${productId}`);
     return { success: true, image };
   } catch (err) {
@@ -191,8 +242,15 @@ export async function addProductImageAction(productId: string, url: string, altT
 
 export async function removeProductImageAction(imageId: string, productId: string) {
   try {
-    await requireAdmin();
+    await requirePermission("manage_products");
     await productService.removeProductImage(imageId);
+
+    await logAuditEvent({
+      action: "product_image.remove",
+      entityType: "product",
+      entityId: productId,
+    });
+
     revalidatePath(`/admin/products/${productId}`);
     return { success: true };
   } catch (err) {
@@ -209,7 +267,7 @@ export async function removeProductImageAction(imageId: string, productId: strin
 
 export async function createCategoryAction(input: CreateCategoryAdminInput) {
   try {
-    await requireAdmin();
+    await requirePermission("manage_categories");
     const validated = CreateCategoryAdminSchema.parse(input);
     const category = await categoryService.createCategoryAdmin({
       name: validated.name,
@@ -217,6 +275,13 @@ export async function createCategoryAction(input: CreateCategoryAdminInput) {
       description: validated.description ?? null,
       parent_id: validated.parent_id ?? null,
     });
+
+    await logAuditEvent({
+      action: "category.create",
+      entityType: "category",
+      entityId: category.id,
+    });
+
     revalidatePath("/admin/categories");
     return { success: true, category };
   } catch (err) {
@@ -229,7 +294,7 @@ export async function createCategoryAction(input: CreateCategoryAdminInput) {
 
 export async function updateCategoryAction(input: UpdateCategoryAdminInput) {
   try {
-    await requireAdmin();
+    await requirePermission("manage_categories");
     const validated = UpdateCategoryAdminSchema.parse(input);
     const { id, ...data } = validated;
     const updated = await categoryService.updateCategoryAdmin(id, {
@@ -237,6 +302,13 @@ export async function updateCategoryAction(input: UpdateCategoryAdminInput) {
       description: data.description ?? undefined,
       parent_id: data.parent_id ?? undefined,
     });
+
+    await logAuditEvent({
+      action: "category.update",
+      entityType: "category",
+      entityId: id,
+    });
+
     revalidatePath("/admin/categories");
     return { success: true, category: updated };
   } catch (err) {
@@ -249,8 +321,15 @@ export async function updateCategoryAction(input: UpdateCategoryAdminInput) {
 
 export async function archiveCategoryAction(id: string) {
   try {
-    await requireAdmin();
+    await requirePermission("manage_categories");
     const category = await categoryService.archiveCategoryAdmin(id);
+
+    await logAuditEvent({
+      action: "category.archive",
+      entityType: "category",
+      entityId: id,
+    });
+
     revalidatePath("/admin/categories");
     return { success: true, category };
   } catch (err) {
@@ -263,8 +342,15 @@ export async function archiveCategoryAction(id: string) {
 
 export async function restoreCategoryAction(id: string) {
   try {
-    await requireAdmin();
+    await requirePermission("manage_categories");
     const category = await categoryService.restoreCategoryAdmin(id);
+
+    await logAuditEvent({
+      action: "category.restore",
+      entityType: "category",
+      entityId: id,
+    });
+
     revalidatePath("/admin/categories");
     return { success: true, category };
   } catch (err) {
@@ -281,7 +367,7 @@ export async function restoreCategoryAction(id: string) {
 
 export async function updateInventoryAction(input: UpdateInventoryAdminInput) {
   try {
-    await requireAdmin();
+    await requirePermission("manage_inventory");
     const validated = UpdateInventoryAdminSchema.parse(input);
     const updated = await inventoryService.manualInventoryAdjustment({
       inventoryRecordId: validated.inventory_record_id,
@@ -289,6 +375,14 @@ export async function updateInventoryAction(input: UpdateInventoryAdminInput) {
       newQuantity: validated.new_quantity,
       reason: validated.reason,
     });
+
+    await logAuditEvent({
+      action: "inventory.adjust",
+      entityType: "inventory_record",
+      entityId: validated.inventory_record_id,
+      metadata: { new_quantity: validated.new_quantity, reason: validated.reason },
+    });
+
     revalidatePath("/admin/inventory");
     revalidatePath("/admin");
     return { success: true, inventory: updated };
@@ -306,12 +400,19 @@ export async function updateInventoryAction(input: UpdateInventoryAdminInput) {
 
 export async function updateOrderStatusAction(input: UpdateOrderStatusAdminInput) {
   try {
-    await requireAdmin();
+    await requirePermission("manage_orders");
     const validated = UpdateOrderStatusAdminSchema.parse(input);
     const updated = await (await import("@/lib/db/orders")).updateOrderStatus(validated.order_id, validated.status);
     if (validated.note) {
       await orderService.addOrderNote(validated.order_id, `Status updated to ${validated.status}: ${validated.note}`);
     }
+
+    await logAuditEvent({
+      action: "order.update_status",
+      entityType: "order",
+      entityId: validated.order_id,
+      metadata: { new_status: validated.status },
+    });
 
     revalidatePath(`/admin/orders/${validated.order_id}`);
     revalidatePath("/admin/orders");
@@ -325,13 +426,39 @@ export async function updateOrderStatusAction(input: UpdateOrderStatusAdminInput
   }
 }
 
+export async function addOrderNoteAction(input: AddOrderNoteAdminInput) {
+  try {
+    await requirePermission("manage_orders");
+    const validated = AddOrderNoteAdminSchema.parse(input);
+    const note = await orderService.addOrderNote(
+      validated.order_id,
+      validated.body,
+      validated.author_type === "admin"
+    );
+
+    await logAuditEvent({
+      action: "order.add_note",
+      entityType: "order",
+      entityId: validated.order_id,
+    });
+
+    revalidatePath(`/admin/orders/${validated.order_id}`);
+    return { success: true, note };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to add note",
+    };
+  }
+}
+
 // ---------------------------------------------------------------------------
 // 4b. Customer Actions
 // ---------------------------------------------------------------------------
 
 export async function listCustomersAction(params?: { search?: string; limit?: number; offset?: number }) {
   try {
-    await requireAdmin();
+    await requirePermission("view_customers");
     const result = await customerService.getAllCustomers(params);
     return { success: true, ...result };
   } catch (err) {
@@ -344,7 +471,7 @@ export async function listCustomersAction(params?: { search?: string; limit?: nu
 
 export async function getCustomerAction(id: string) {
   try {
-    await requireAdmin();
+    await requirePermission("view_customers");
     const customer = await customerService.getCustomerProfile(id);
     return { success: true, customer };
   } catch (err) {
@@ -355,32 +482,13 @@ export async function getCustomerAction(id: string) {
   }
 }
 
-export async function addOrderNoteAction(input: AddOrderNoteAdminInput) {
-  try {
-    await requireAdmin();
-    const validated = AddOrderNoteAdminSchema.parse(input);
-    const note = await orderService.addOrderNote(
-      validated.order_id,
-      validated.body,
-      validated.author_type === "admin"
-    );
-    revalidatePath(`/admin/orders/${validated.order_id}`);
-    return { success: true, note };
-  } catch (err) {
-    return {
-      success: false,
-      error: err instanceof Error ? err.message : "Failed to add note",
-    };
-  }
-}
-
 // ---------------------------------------------------------------------------
 // 5. Promotion Actions
 // ---------------------------------------------------------------------------
 
 export async function createPromotionAction(input: CreatePromotionAdminInput) {
   try {
-    await requireAdmin();
+    await requirePermission("manage_promotions");
     const validated = CreatePromotionAdminSchema.parse(input);
     const promotion = await promotionService.createPromotionAdmin(
       {
@@ -394,6 +502,14 @@ export async function createPromotionAction(input: CreatePromotionAdminInput) {
       validated.code,
       validated.max_uses ?? null
     );
+
+    await logAuditEvent({
+      action: "promotion.create",
+      entityType: "promotion",
+      entityId: promotion.id,
+      metadata: { code: validated.code },
+    });
+
     revalidatePath("/admin/promotions");
     revalidatePath("/admin");
     return { success: true, promotion };
@@ -407,7 +523,7 @@ export async function createPromotionAction(input: CreatePromotionAdminInput) {
 
 export async function updatePromotionAction(input: UpdatePromotionAdminInput) {
   try {
-    await requireAdmin();
+    await requirePermission("manage_promotions");
     const validated = UpdatePromotionAdminSchema.parse(input);
     const { id, ...data } = validated;
     const updated = await promotionService.updatePromotionAdmin(id, {
@@ -415,6 +531,13 @@ export async function updatePromotionAction(input: UpdatePromotionAdminInput) {
       starts_at: data.starts_at ?? undefined,
       ends_at: data.ends_at ?? undefined,
     });
+
+    await logAuditEvent({
+      action: "promotion.update",
+      entityType: "promotion",
+      entityId: id,
+    });
+
     revalidatePath("/admin/promotions");
     return { success: true, promotion: updated };
   } catch (err) {
@@ -427,8 +550,16 @@ export async function updatePromotionAction(input: UpdatePromotionAdminInput) {
 
 export async function togglePromotionActiveAction(id: string, isActive: boolean) {
   try {
-    await requireAdmin();
+    await requirePermission("manage_promotions");
     const updated = await promotionService.togglePromotionActive(id, isActive);
+
+    await logAuditEvent({
+      action: "promotion.toggle_active",
+      entityType: "promotion",
+      entityId: id,
+      metadata: { is_active: isActive },
+    });
+
     revalidatePath("/admin/promotions");
     revalidatePath("/admin");
     return { success: true, promotion: updated };
@@ -442,8 +573,15 @@ export async function togglePromotionActiveAction(id: string, isActive: boolean)
 
 export async function deletePromotionAction(id: string) {
   try {
-    await requireAdmin();
+    await requirePermission("manage_promotions");
     await promotionService.deletePromotionAdmin(id);
+
+    await logAuditEvent({
+      action: "promotion.delete",
+      entityType: "promotion",
+      entityId: id,
+    });
+
     revalidatePath("/admin/promotions");
     return { success: true };
   } catch (err) {
@@ -460,9 +598,16 @@ export async function deletePromotionAction(id: string) {
 
 export async function updateStoreSettingsAction(id: string, input: UpdateStoreSettingsAdminInput) {
   try {
-    await requireAdmin();
+    await requirePermission("manage_settings");
     const validated = UpdateStoreSettingsAdminSchema.parse(input);
     const settings = await storeService.updateStoreSettings(id, validated);
+
+    await logAuditEvent({
+      action: "store_settings.update",
+      entityType: "store_settings",
+      entityId: id,
+    });
+
     revalidatePath("/admin/settings");
     return { success: true, settings };
   } catch (err) {
@@ -475,7 +620,7 @@ export async function updateStoreSettingsAction(id: string, input: UpdateStoreSe
 
 export async function updateBrandProfileAction(id: string, input: UpdateBrandProfileAdminInput) {
   try {
-    await requireAdmin();
+    await requirePermission("manage_settings");
     const validated = UpdateBrandProfileAdminSchema.parse(input);
     const profile = await storeService.updateBrandProfile(id, {
       ...validated,
@@ -483,6 +628,13 @@ export async function updateBrandProfileAction(id: string, input: UpdateBrandPro
       contact_phone: validated.contact_phone ?? undefined,
       seo_title: validated.seo_title ?? undefined,
     });
+
+    await logAuditEvent({
+      action: "brand_profile.update",
+      entityType: "brand_profile",
+      entityId: id,
+    });
+
     revalidatePath("/admin/settings");
     return { success: true, profile };
   } catch (err) {
@@ -495,9 +647,17 @@ export async function updateBrandProfileAction(id: string, input: UpdateBrandPro
 
 export async function updateFeatureFlagAction(input: UpdateFeatureFlagAdminInput) {
   try {
-    await requireAdmin();
+    await requirePermission("manage_settings");
     const validated = UpdateFeatureFlagAdminSchema.parse(input);
     const flag = await storeService.setFeatureFlag(validated.key, validated.enabled);
+
+    await logAuditEvent({
+      action: "feature_flag.update",
+      entityType: "feature_flag",
+      entityId: validated.key,
+      metadata: { enabled: validated.enabled },
+    });
+
     revalidatePath("/admin/settings");
     return { success: true, flag };
   } catch (err) {

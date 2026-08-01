@@ -1,7 +1,7 @@
 /**
  * scripts/bootstrap-admin.ts
  *
- * CLI Utility to bootstrap an initial admin user in the `admin_users` table.
+ * CLI Utility to bootstrap an initial admin user in the `admin_users` table with Owner role.
  *
  * Usage:
  *   npx tsx scripts/bootstrap-admin.ts <user-email>
@@ -74,6 +74,18 @@ async function bootstrapAdmin() {
 
   console.log(`Found auth user ID: ${targetUser.id}`);
 
+  // Fetch Owner role ID
+  const { data: ownerRole, error: roleError } = await supabase
+    .from("roles")
+    .select("id")
+    .eq("key", "owner")
+    .single();
+
+  if (roleError || !ownerRole) {
+    console.error("Error: Could not find 'owner' role in database. Please apply migration 020_rbac.sql first.");
+    process.exit(1);
+  }
+
   // Check if user is already an admin
   const { data: existingAdmin, error: checkError } = await supabase
     .from("admin_users")
@@ -87,21 +99,30 @@ async function bootstrapAdmin() {
   }
 
   if (existingAdmin) {
-    console.log(`Success: User "${email}" (${targetUser.id}) is already registered as an admin.`);
+    await supabase
+      .from("admin_users")
+      .update({ role_id: ownerRole.id, is_active: true, is_protected_owner: true })
+      .eq("id", existingAdmin.id);
+    console.log(`Updated existing admin user "${email}" with Owner role and Protected status.`);
     process.exit(0);
   }
 
-  // Insert into admin_users
+  // Insert into admin_users with Owner role and Protected status
   const { error: insertError } = await supabase
     .from("admin_users")
-    .insert({ auth_user_id: targetUser.id });
+    .insert({
+      auth_user_id: targetUser.id,
+      role_id: ownerRole.id,
+      is_active: true,
+      is_protected_owner: true,
+    });
 
   if (insertError) {
     console.error("Failed to insert into admin_users:", insertError.message);
     process.exit(1);
   }
 
-  console.log(`🎉 Success! User "${email}" (${targetUser.id}) has been added to admin_users.`);
+  console.log(`🎉 Success! User "${email}" (${targetUser.id}) has been added to admin_users with Protected Owner role.`);
 }
 
 bootstrapAdmin().catch((err) => {
