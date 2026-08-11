@@ -8,14 +8,62 @@
 
 import { revalidatePath } from "next/cache";
 import { getCurrentUser } from "@/lib/auth/server-auth";
+import { createClient } from "@/lib/supabase/server";
 import * as customerService from "@/services/customer-service";
 import * as orderService from "@/services/order-service";
-import { getOrCreateCartAction } from "./cart.actions";
+import { getOrCreateCartAction, mergeCartOnLoginAction } from "./cart.actions";
 import type {
   UpdateCustomerProfileInput,
   CustomerAddressInput,
   GuestOrderLookupInput,
 } from "@/lib/validation/customer";
+
+/**
+ * Signs in a customer and immediately merges any active guest cart into
+ * their authenticated cart. Returns the merged cart alongside the auth result.
+ */
+export async function signInAction(email: string, password: string) {
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error || !data.user) {
+      return { success: false, error: error?.message ?? "Sign-in failed" };
+    }
+
+    // Resolve the customer profile for cart merge
+    const customer = await customerService.getCustomerByAuthId(data.user.id);
+    const customerId = customer?.id;
+
+    if (customerId) {
+      await mergeCartOnLoginAction(customerId);
+    }
+
+    revalidatePath("/", "layout");
+    return { success: true, userId: data.user.id };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Sign-in failed",
+    };
+  }
+}
+
+/**
+ * Signs out the current customer.
+ */
+export async function signOutAction() {
+  try {
+    const supabase = await createClient();
+    await supabase.auth.signOut();
+    revalidatePath("/", "layout");
+    return { success: true };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Sign-out failed",
+    };
+  }
+}
 
 /**
  * Resolves the logged-in customer profile, or returns mock/guest fallback if auth is inactive.

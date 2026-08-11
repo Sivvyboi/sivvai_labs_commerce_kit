@@ -10,11 +10,12 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Save } from "lucide-react";
+import { ArrowLeft, Plus } from "lucide-react";
 import { clsx } from "clsx";
 
 import { useAdmin } from "@/features/admin/hooks/useAdmin";
 import { createProductAction } from "@/features/admin/actions/admin.actions";
+import { useCurrency } from "@/components/shared/CurrencyProvider";
 import type { CategoryRow } from "@/lib/db/categories";
 
 interface NewProductFormProps {
@@ -24,16 +25,19 @@ interface NewProductFormProps {
 export function NewProductForm({ categories }: NewProductFormProps) {
   const router = useRouter();
   const { execute, loading, error } = useAdmin();
+  const storeCurrency = useCurrency();
 
   const [name, setName] = React.useState("");
   const [slug, setSlug] = React.useState("");
   const [autoSlug, setAutoSlug] = React.useState(true);
+  const [sku, setSku] = React.useState("");
+  const [initialStock, setInitialStock] = React.useState("10");
   const [description, setDescription] = React.useState("");
   const [categoryId, setCategoryId] = React.useState("");
   const [status, setStatus] = React.useState<"draft" | "published">("draft");
-  const [priceNGN, setPriceNGN] = React.useState("");
-  const [salePriceNGN, setSalePriceNGN] = React.useState("");
-  const [costPriceNGN, setCostPriceNGN] = React.useState("");
+  const [price, setPrice] = React.useState("");
+  const [salePrice, setSalePrice] = React.useState("");
+  const [costPrice, setCostPrice] = React.useState("");
   const [isFeatured, setIsFeatured] = React.useState(false);
   const [seoTitle, setSeoTitle] = React.useState("");
   const [seoDescription, setSeoDescription] = React.useState("");
@@ -54,25 +58,26 @@ export function NewProductForm({ categories }: NewProductFormProps) {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
-    // Convert NGN inputs to kobo (minor units)
-    const basePriceKobo = Math.round((Number(priceNGN) || 0) * 100);
-    const salePriceKobo = salePriceNGN ? Math.round(Number(salePriceNGN) * 100) : null;
-    const costPriceKobo = costPriceNGN ? Math.round(Number(costPriceNGN) * 100) : null;
+    // Convert inputs to kobo/cents (minor units)
+    const basePriceKobo = Math.round((Number(price) || 0) * 100);
+    const salePriceKobo = salePrice ? Math.round(Number(salePrice) * 100) : null;
+    const costPriceKobo = costPrice ? Math.round(Number(costPrice) * 100) : null;
 
     const result = await execute(() =>
       createProductAction({
         name,
         slug,
+        sku: sku || undefined,
         description: description || undefined,
         category_id: categoryId || null,
-        status,
+        status: "draft",
         base_price: basePriceKobo,
         sale_price: salePriceKobo,
         cost_price: costPriceKobo,
         is_featured: isFeatured,
         seo_title: seoTitle || null,
         seo_description: seoDescription || null,
-        initial_stock: 0,
+        initial_stock: Number(initialStock) || 0,
         track_inventory: true,
       })
     );
@@ -193,22 +198,22 @@ export function NewProductForm({ categories }: NewProductFormProps) {
           </div>
         </div>
 
-        {/* Pricing */}
+        {/* Pricing & Inventory */}
         <div className="rounded-[var(--kit-radius-lg)] border border-[var(--kit-border)] bg-[var(--kit-card)] p-6 shadow-[var(--kit-shadow-sm)] space-y-4">
-          <h2 className="text-sm font-semibold text-[var(--kit-text-primary)]">Pricing (NGN)</h2>
+          <h2 className="text-sm font-semibold text-[var(--kit-text-primary)]">Pricing ({storeCurrency}) & Initial Inventory</h2>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <div>
               <label htmlFor="new-product-price-input" className="block text-xs font-medium text-[var(--kit-text-secondary)]">
-                Base Price (₦) <span className="text-[var(--kit-danger)]">*</span>
+                Base Price <span className="text-[var(--kit-danger)]">*</span>
               </label>
               <input
                 id="new-product-price-input"
                 type="number"
                 step="0.01"
                 min="0"
-                value={priceNGN}
-                onChange={(e) => setPriceNGN(e.target.value)}
+                value={price}
+                onChange={(e) => setPrice(e.target.value)}
                 placeholder="0.00"
                 required
                 className={clsx(
@@ -221,15 +226,15 @@ export function NewProductForm({ categories }: NewProductFormProps) {
 
             <div>
               <label htmlFor="new-product-saleprice-input" className="block text-xs font-medium text-[var(--kit-text-secondary)]">
-                Sale Price (₦)
+                Sale Price
               </label>
               <input
                 id="new-product-saleprice-input"
                 type="number"
                 step="0.01"
                 min="0"
-                value={salePriceNGN}
-                onChange={(e) => setSalePriceNGN(e.target.value)}
+                value={salePrice}
+                onChange={(e) => setSalePrice(e.target.value)}
                 placeholder="Optional"
                 className={clsx(
                   "mt-1 h-9 w-full rounded-[var(--kit-radius-md)] border border-[var(--kit-border)]",
@@ -241,15 +246,15 @@ export function NewProductForm({ categories }: NewProductFormProps) {
 
             <div>
               <label htmlFor="new-product-costprice-input" className="block text-xs font-medium text-[var(--kit-text-secondary)]">
-                Cost Price (₦)
+                Cost Price
               </label>
               <input
                 id="new-product-costprice-input"
                 type="number"
                 step="0.01"
                 min="0"
-                value={costPriceNGN}
-                onChange={(e) => setCostPriceNGN(e.target.value)}
+                value={costPrice}
+                onChange={(e) => setCostPrice(e.target.value)}
                 placeholder="Optional"
                 className={clsx(
                   "mt-1 h-9 w-full rounded-[var(--kit-radius-md)] border border-[var(--kit-border)]",
@@ -258,44 +263,55 @@ export function NewProductForm({ categories }: NewProductFormProps) {
                 )}
               />
             </div>
-          </div>
-        </div>
 
-        {/* Status & Options */}
-        <div className="rounded-[var(--kit-radius-lg)] border border-[var(--kit-border)] bg-[var(--kit-card)] p-6 shadow-[var(--kit-shadow-sm)] space-y-4">
-          <h2 className="text-sm font-semibold text-[var(--kit-text-primary)]">Status & Settings</h2>
-
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
-              <label htmlFor="new-product-status-select" className="block text-xs font-medium text-[var(--kit-text-secondary)]">
-                Initial Status
+              <label htmlFor="new-product-sku-input" className="block text-xs font-medium text-[var(--kit-text-secondary)]">
+                SKU (Stock Keeping Unit)
               </label>
-              <select
-                id="new-product-status-select"
-                value={status}
-                onChange={(e) => setStatus(e.target.value as "draft" | "published")}
+              <input
+                id="new-product-sku-input"
+                type="text"
+                value={sku}
+                onChange={(e) => setSku(e.target.value)}
+                placeholder="e.g. HOODIE-BLK-01"
+                className={clsx(
+                  "mt-1 h-9 w-full rounded-[var(--kit-radius-md)] border border-[var(--kit-border)]",
+                  "bg-[var(--kit-surface)] px-3 text-sm text-[var(--kit-text-primary)] font-mono",
+                  "focus:border-[var(--kit-accent)] focus:outline-none"
+                )}
+              />
+            </div>
+
+            <div>
+              <label htmlFor="new-product-stock-input" className="block text-xs font-medium text-[var(--kit-text-secondary)]">
+                Initial Stock Quantity
+              </label>
+              <input
+                id="new-product-stock-input"
+                type="number"
+                min="0"
+                value={initialStock}
+                onChange={(e) => setInitialStock(e.target.value)}
+                placeholder="0"
                 className={clsx(
                   "mt-1 h-9 w-full rounded-[var(--kit-radius-md)] border border-[var(--kit-border)]",
                   "bg-[var(--kit-surface)] px-3 text-sm text-[var(--kit-text-primary)]",
                   "focus:border-[var(--kit-accent)] focus:outline-none"
                 )}
-              >
-                <option value="draft">Draft (hidden from storefront)</option>
-                <option value="published">Published (visible immediately)</option>
-              </select>
+              />
             </div>
+          </div>
 
-            <div className="flex items-center pt-5">
-              <label className="flex items-center gap-2 text-sm text-[var(--kit-text-primary)] cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={isFeatured}
-                  onChange={(e) => setIsFeatured(e.target.checked)}
-                  className="h-4 w-4 rounded border-[var(--kit-border)] text-[var(--kit-accent)] focus:ring-[var(--kit-accent)]"
-                />
-                Feature on Homepage
-              </label>
-            </div>
+          <div className="flex items-center pt-2">
+            <label className="flex items-center gap-2 text-sm text-[var(--kit-text-primary)] cursor-pointer">
+              <input
+                type="checkbox"
+                checked={isFeatured}
+                onChange={(e) => setIsFeatured(e.target.checked)}
+                className="h-4 w-4 rounded border-[var(--kit-border)] text-[var(--kit-accent)] focus:ring-[var(--kit-accent)]"
+              />
+              Feature on Homepage
+            </label>
           </div>
         </div>
 
@@ -360,7 +376,7 @@ export function NewProductForm({ categories }: NewProductFormProps) {
               "bg-[var(--kit-accent)] text-white hover:opacity-90 transition-opacity disabled:opacity-50"
             )}
           >
-            <Save size={14} /> {loading ? "Creating…" : "Save Product"}
+            <Plus size={14} /> {loading ? "Creating…" : "Create New Product"}
           </button>
         </div>
       </form>

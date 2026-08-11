@@ -44,12 +44,30 @@ export interface FindProductsParams {
   search?: string;
 }
 
+// Explicit column selects — avoids fetching unnecessary columns and ensures type safety
+const PRODUCT_COLUMNS = `
+  id, slug, name, description, base_price, sale_price, compare_at_price,
+  status, is_featured, category_id, seo_title, seo_description,
+  archived_at, created_at, updated_at,
+  category:categories(id, name, slug, description, archived_at),
+  variants:product_variants(
+    id, product_id, image_id, sku, option_combination, price_override, is_default, status,
+    archived_at, created_at, updated_at
+  ),
+  images:product_images(
+    id, product_id, url, alt_text, display_order, is_primary, created_at
+  ),
+  option_groups(
+    id, product_id, name, display_order,
+    values:option_values(id, option_group_id, label, display_order, swatch_type, swatch_value)
+  )
+`.trim();
+
 export async function findProducts(
   params: FindProductsParams = {}
 ): Promise<{ data: ProductWithDetails[]; count: number }> {
   const supabase = await createClient();
 
-  // If categorySlug is specified, fetch category ID first or join
   let categoryId: string | undefined;
   if (params.categorySlug) {
     const { data: cat } = await supabase
@@ -65,28 +83,23 @@ export async function findProducts(
 
   let query = supabase
     .from("products")
-    .select("*, category:categories(*), variants:product_variants(*), images:product_images(*), option_groups(*, values:option_values(*))", {
-      count: "exact",
-    });
+    .select(PRODUCT_COLUMNS, { count: "exact" });
 
-  // Status Filter (default: published)
+  // Status filter (default: published)
   if (params.status) {
     query = query.eq("status", params.status);
   } else {
     query = query.eq("status", "published");
   }
 
-  // Category Filter
   if (categoryId) {
     query = query.eq("category_id", categoryId);
   }
 
-  // Featured Filter
   if (params.featured !== undefined) {
     query = query.eq("is_featured", params.featured);
   }
 
-  // Price Range Filter (base_price in minor units / kobo)
   if (params.minPrice !== undefined && !isNaN(params.minPrice)) {
     query = query.gte("base_price", params.minPrice);
   }
@@ -94,9 +107,15 @@ export async function findProducts(
     query = query.lte("base_price", params.maxPrice);
   }
 
-  // Search Filter
+  // Full-text search using materialized tsvector column (migration 027)
   if (params.search) {
-    query = query.ilike("name", `%${params.search.trim()}%`);
+    const sanitized = params.search.trim().replace(/[&|!():*'"\\]/g, " ").trim();
+    if (sanitized) {
+      query = query.textSearch("search_vector", sanitized, {
+        type: "websearch",
+        config: "english",
+      });
+    }
   }
 
   // Sorting
@@ -128,7 +147,7 @@ export async function findProducts(
       break;
   }
 
-  // Pagination Range
+  // Pagination
   if (params.limit) {
     const from = params.offset || 0;
     const to = from + params.limit - 1;
@@ -144,7 +163,7 @@ export async function findProductById(id: string): Promise<ProductWithDetails | 
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("products")
-    .select("*, category:categories(*), variants:product_variants(*), images:product_images(*), option_groups(*, values:option_values(*))")
+    .select(PRODUCT_COLUMNS)
     .eq("id", id)
     .single();
 
@@ -156,7 +175,7 @@ export async function findProductBySlug(slug: string): Promise<ProductWithDetail
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("products")
-    .select("*, category:categories(*), variants:product_variants(*), images:product_images(*), option_groups(*, values:option_values(*))")
+    .select(PRODUCT_COLUMNS)
     .eq("slug", slug)
     .single();
 

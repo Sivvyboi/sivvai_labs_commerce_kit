@@ -4,7 +4,7 @@
  * components/admin/layout/AdminSidebar.tsx
  *
  * Desktop persistent sidebar for the admin shell.
- * Client Component — receives user permissions prop to render filtered nav.
+ * Shows filtered navigation + current user identity in the footer.
  */
 
 import * as React from "react";
@@ -17,6 +17,8 @@ import { LayoutDashboard, ChevronRight, LogOut } from "lucide-react";
 
 interface AdminSidebarProps {
   permissions?: string[];
+  userEmail?: string;
+  roleName?: string;
 }
 
 function NavLink({ item }: { item: NavItem }) {
@@ -50,7 +52,7 @@ function NavLink({ item }: { item: NavItem }) {
   );
 }
 
-export function AdminSidebar({ permissions = [] }: AdminSidebarProps) {
+export function AdminSidebar({ permissions = [], userEmail = "", roleName = "" }: AdminSidebarProps) {
   const visibleGroups = filterNavGroups(NAV_GROUPS, permissions);
 
   return (
@@ -91,8 +93,15 @@ export function AdminSidebar({ permissions = [] }: AdminSidebarProps) {
         ))}
       </nav>
 
-      {/* Footer — back to storefront & sign out */}
+      {/* Footer — user identity + sign out */}
       <div className="border-t border-[var(--kit-border)] p-3 space-y-1">
+        {/* Current user info */}
+        {userEmail && (
+          <div className="rounded-[var(--kit-radius-md)] px-3 py-2 mb-1">
+            <p className="text-[11px] font-medium text-[var(--kit-text-primary)] truncate">{userEmail}</p>
+            {roleName && <p className="text-[10px] text-[var(--kit-text-muted)]">{roleName}</p>}
+          </div>
+        )}
         <Link
           href="/"
           className={clsx(

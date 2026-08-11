@@ -18,7 +18,10 @@ export const CreateProductAdminSchema = z.object({
   name: z.string().min(1, "Product name is required"),
   slug: z.string().min(1, "Slug is required").regex(/^[a-z0-9-]+$/, "Slug must be lowercase letters, numbers and hyphens only"),
   description: z.string().optional(),
-  category_id: z.string().uuid("Invalid category").optional().nullable(),
+  category_id: z.preprocess(
+    (val) => (val === "" ? null : val),
+    z.string().uuid("Invalid category").optional().nullable()
+  ),
   status: z.enum(["draft", "published", "archived"]).default("draft"),
   base_price: z.coerce.number().min(0, "Price must be 0 or greater"),
   sale_price: z.coerce.number().min(0).optional().nullable(),
@@ -27,6 +30,7 @@ export const CreateProductAdminSchema = z.object({
   is_featured: z.boolean().default(false),
   seo_title: z.string().max(70).optional().nullable(),
   seo_description: z.string().max(160).optional().nullable(),
+  sku: z.string().optional().nullable(),
   // Initial inventory (applied after product creation)
   initial_stock: z.coerce.number().int().min(0).optional().default(0),
   track_inventory: z.boolean().optional().default(true),
@@ -39,6 +43,24 @@ export const UpdateProductAdminSchema = CreateProductAdminSchema.partial().exten
 });
 
 export type UpdateProductAdminInput = z.infer<typeof UpdateProductAdminSchema>;
+
+// ---------------------------------------------------------------------------
+// Option Groups & Values
+// ---------------------------------------------------------------------------
+
+export const CreateOptionGroupSchema = z.object({
+  product_id: z.string().uuid(),
+  name: z.string().min(1, "Option group name is required"),
+});
+
+export type CreateOptionGroupInput = z.infer<typeof CreateOptionGroupSchema>;
+
+export const CreateOptionValueSchema = z.object({
+  option_group_id: z.string().uuid(),
+  label: z.string().min(1, "Option value label is required"),
+});
+
+export type CreateOptionValueInput = z.infer<typeof CreateOptionValueSchema>;
 
 // ---------------------------------------------------------------------------
 // Variants (edit-only: SKU, price override, stock)

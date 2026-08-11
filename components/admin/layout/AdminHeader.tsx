@@ -36,6 +36,11 @@ function segmentLabel(segment: string): string {
     settings: "Settings",
     activity: "Activity",
     new: "New",
+    team: "Team",
+    members: "Members",
+    invitations: "Invitations",
+    users: "Users",
+    forbidden: "Access Restricted",
   };
   return labels[segment] ?? segment.charAt(0).toUpperCase() + segment.slice(1);
 }

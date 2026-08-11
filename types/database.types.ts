@@ -15,6 +15,45 @@ export type Json =
 export interface Database {
   public: {
     Tables: {
+      admin_invitations: {
+        Row: {
+          id: string;
+          email: string;
+          role_id: string | null;
+          invited_by: string | null;
+          token: string;
+          status: "pending" | "accepted" | "expired" | "revoked";
+          message: string | null;
+          expires_at: string;
+          accepted_at: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          email: string;
+          role_id?: string | null;
+          invited_by?: string | null;
+          token?: string;
+          status?: "pending" | "accepted" | "expired" | "revoked";
+          message?: string | null;
+          expires_at?: string;
+          accepted_at?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          email?: string;
+          role_id?: string | null;
+          invited_by?: string | null;
+          token?: string;
+          status?: "pending" | "accepted" | "expired" | "revoked";
+          message?: string | null;
+          expires_at?: string;
+          accepted_at?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
       admin_users: {
         Row: {
           id: string;
@@ -712,6 +751,7 @@ export interface Database {
         Row: {
           id: string;
           customer_id: string | null;
+          cart_token_hash: string | null;
           status: string;
           expires_at: string;
           created_at: string;
@@ -720,6 +760,7 @@ export interface Database {
         Insert: {
           id?: string;
           customer_id?: string | null;
+          cart_token_hash?: string | null;
           status?: string;
           expires_at: string;
           created_at?: string;
@@ -728,6 +769,7 @@ export interface Database {
         Update: {
           id?: string;
           customer_id?: string | null;
+          cart_token_hash?: string | null;
           status?: string;
           expires_at?: string;
           created_at?: string;

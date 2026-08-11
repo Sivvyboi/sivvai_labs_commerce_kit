@@ -8,8 +8,9 @@
  * Security & Cookie Specs:
  *  - Cookie name: `cart_id`
  *  - httpOnly: true, secure in production, sameSite: lax, maxAge: 7 days
- *  - All mutations consume existing cart-service / promotion-service logic
- *  - Revalidates path cache after mutations
+ *  - Unit prices are NEVER accepted from the client; they are always resolved
+ *    server-side from the database (product_variants → products).
+ *  - Revalidates path cache after mutations.
  */
 
 import { cookies } from "next/headers";
@@ -52,7 +53,7 @@ export async function getOrCreateCartAction(): Promise<{
       const cart = await cartService.getCart(existingCartId);
       return { success: true, cart };
     } catch {
-      // Cart expired or not found in database — fall through to create a new one
+      // Cart expired or not found — fall through to create a new one
     }
   }
 
@@ -66,11 +67,13 @@ export async function getOrCreateCartAction(): Promise<{
 /**
  * Adds an item (variant) to the active cart.
  * Creates cart if not yet created.
+ *
+ * Note: `unitPriceSnapshot` is intentionally absent from this action's params.
+ * The authoritative price is always resolved server-side in the repository layer.
  */
 export async function addToCartAction(params: {
   variantId: string;
   quantity?: number;
-  unitPriceSnapshot?: number;
 }): Promise<{
   success: boolean;
   cart: EnrichedCart;
@@ -90,22 +93,21 @@ export async function addToCartAction(params: {
       cartId,
       variantId: params.variantId,
       quantity: params.quantity ?? 1,
-      unitPriceSnapshot: params.unitPriceSnapshot,
     });
 
     revalidatePath("/", "layout");
     return { success: true, cart };
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to add item to cart";
-    // Fetch fallback cart if available
     const cookieStore = await cookies();
     const existingCartId = cookieStore.get(CART_COOKIE_NAME)?.value;
     let fallbackCart: EnrichedCart | null = null;
+
     if (existingCartId) {
       try {
         fallbackCart = await cartService.getCart(existingCartId);
       } catch {
-        // ignore fallback error
+        // ignore
       }
     }
 
@@ -193,6 +195,41 @@ export async function clearCartAction(): Promise<{
       success: false,
       cart,
       error: err instanceof Error ? err.message : "Failed to clear cart",
+    };
+  }
+}
+
+/**
+ * Merges the current guest cart into the authenticated customer's cart.
+ * Call this immediately after a successful sign-in.
+ *
+ * The guest cart_id cookie is cleared once the merge completes; the
+ * customer's cart ID is written back to the cookie.
+ */
+export async function mergeCartOnLoginAction(customerId: string): Promise<{
+  success: boolean;
+  cart: EnrichedCart;
+  error?: string;
+}> {
+  try {
+    const cookieStore = await cookies();
+    const guestCartId = cookieStore.get(CART_COOKIE_NAME)?.value;
+
+    const mergedCart = await cartService.mergeGuestCartOnLogin({
+      guestCartId: guestCartId ?? "",
+      customerId,
+    });
+
+    // Point the cookie at the customer's cart
+    await setCartCookie(mergedCart.id);
+    revalidatePath("/", "layout");
+    return { success: true, cart: mergedCart };
+  } catch (err) {
+    const { cart } = await getOrCreateCartAction();
+    return {
+      success: false,
+      cart,
+      error: err instanceof Error ? err.message : "Cart merge failed",
     };
   }
 }

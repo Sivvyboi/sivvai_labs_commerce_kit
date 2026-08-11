@@ -10,14 +10,17 @@
 import * as React from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { Copy, Edit, Eye, Archive, CheckCircle, Package } from "lucide-react";
+import { Copy, Edit, Eye, Archive, CheckCircle, EyeOff, Package, RotateCcw } from "lucide-react";
 import { StatusBadge } from "@/components/admin/ui/StatusBadge";
 import { ConfirmDialog } from "@/components/admin/ui/ConfirmDialog";
+import { Price } from "@/components/shared/Price";
 import { useAdmin } from "@/features/admin/hooks/useAdmin";
 import {
   archiveProductAction,
   publishProductAction,
+  unpublishProductAction,
   duplicateProductAction,
+  restoreProductAction,
 } from "@/features/admin/actions/admin.actions";
 import type { ProductWithDetails } from "@/lib/db/products";
 
@@ -43,8 +46,16 @@ export function ProductsTable({ products }: ProductsTableProps) {
     await execute(() => publishProductAction(id));
   }
 
+  async function handleUnpublish(id: string) {
+    await execute(() => unpublishProductAction(id));
+  }
+
   async function handleDuplicate(id: string) {
     await execute(() => duplicateProductAction(id));
+  }
+
+  async function handleRestore(id: string) {
+    await execute(() => restoreProductAction(id));
   }
 
   return (
@@ -107,10 +118,10 @@ export function ProductsTable({ products }: ProductsTableProps) {
 
                   {/* Price */}
                   <td className="px-3 py-3 font-medium text-[var(--kit-text-primary)]">
-                    {formatPrice(product.base_price)}
+                    <Price amount={product.base_price / 100} size="sm" />
                     {product.sale_price && (
-                      <span className="ml-1 text-xs text-[var(--kit-success)]">
-                        (Sale: {formatPrice(product.sale_price)})
+                      <span className="ml-1.5 text-xs text-[var(--kit-success)]">
+                        (Sale: <Price amount={product.sale_price / 100} size="sm" />)
                       </span>
                     )}
                   </td>
@@ -159,6 +170,19 @@ export function ProductsTable({ products }: ProductsTableProps) {
                         </button>
                       )}
 
+                      {/* Unpublish (if published) */}
+                      {product.status === "published" && (
+                        <button
+                          type="button"
+                          onClick={() => handleUnpublish(product.id)}
+                          disabled={loading}
+                          title="Unpublish product (set to draft)"
+                          className="flex h-8 w-8 items-center justify-center rounded-[var(--kit-radius-md)] text-[var(--kit-warning)] hover:bg-[var(--kit-warning)]/10 transition-colors"
+                        >
+                          <EyeOff size={14} />
+                        </button>
+                      )}
+
                       {/* Duplicate */}
                       <button
                         type="button"
@@ -170,7 +194,7 @@ export function ProductsTable({ products }: ProductsTableProps) {
                         <Copy size={14} />
                       </button>
 
-                      {/* Archive */}
+                      {/* Archive (non-archived products) */}
                       {product.status !== "archived" && (
                         <button
                           type="button"
@@ -180,6 +204,19 @@ export function ProductsTable({ products }: ProductsTableProps) {
                           className="flex h-8 w-8 items-center justify-center rounded-[var(--kit-radius-md)] text-[var(--kit-danger)] hover:bg-[var(--kit-danger)]/10 transition-colors"
                         >
                           <Archive size={14} />
+                        </button>
+                      )}
+
+                      {/* Restore (archived products only) */}
+                      {product.status === "archived" && (
+                        <button
+                          type="button"
+                          onClick={() => handleRestore(product.id)}
+                          disabled={loading}
+                          title="Restore to draft"
+                          className="flex h-8 w-8 items-center justify-center rounded-[var(--kit-radius-md)] text-[var(--kit-success)] hover:bg-[var(--kit-success)]/10 transition-colors"
+                        >
+                          <RotateCcw size={14} />
                         </button>
                       )}
                     </div>

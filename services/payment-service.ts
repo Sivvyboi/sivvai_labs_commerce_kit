@@ -67,13 +67,14 @@ export async function initiatePayment(params: {
 
 export async function processWebhook(
   providerName: string,
+  rawPayload: string,
   payload: Record<string, unknown>,
   signature: string
 ) {
   const provider = getPaymentProvider(providerName);
 
-  // 1. Verify signature
-  if (!provider.verifyWebhookSignature(payload, signature)) {
+  // 1. Verify signature using raw body payload string
+  if (!provider.verifyWebhookSignature(rawPayload, signature)) {
     throw new PaymentVerificationError("WEBHOOK", "Invalid webhook signature");
   }
 

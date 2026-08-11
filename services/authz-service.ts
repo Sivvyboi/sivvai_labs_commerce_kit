@@ -149,6 +149,11 @@ export async function logAuditEvent(params: {
 }): Promise<void> {
   try {
     const ctx = await getCurrentAdminContext();
+    if (!ctx?.admin.id) {
+      console.warn(`[logAuditEvent] Skipping audit log '${params.action}': No active admin context.`);
+      return;
+    }
+
     const supabase = await createClient();
 
     let ipAddress: string | null = null;
@@ -163,7 +168,7 @@ export async function logAuditEvent(params: {
     }
 
     await supabase.from("audit_logs").insert({
-      admin_user_id: ctx?.admin.id || null,
+      admin_user_id: ctx.admin.id,
       action: params.action,
       entity_type: params.entityType || null,
       entity_id: params.entityId || null,

@@ -28,20 +28,27 @@ import { createServerClient as _createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import type { Database } from "@/types";
 
+import { CART_COOKIE_NAME, hashCartToken } from "../auth/cart-token";
+
 /**
  * Creates a Supabase client configured for the server environment.
  * Reads cookies via next/headers for session management.
- *
- * This is an async function because `cookies()` from next/headers is async
- * in Next.js 16 (breaking change from Next.js 14).
+ * Passes x-cart-token-hash in request headers to enable guest cart RLS evaluation.
  */
 export async function createServerClient() {
   const cookieStore = await cookies();
+  const rawCartToken = cookieStore.get(CART_COOKIE_NAME)?.value;
+  const cartTokenHash = rawCartToken ? hashCartToken(rawCartToken) : "";
 
   return _createServerClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
+      global: {
+        headers: {
+          ...(cartTokenHash ? { "x-cart-token-hash": cartTokenHash } : {}),
+        },
+      },
       cookies: {
         getAll() { return cookieStore.getAll(); },
         setAll(cookiesToSet) {

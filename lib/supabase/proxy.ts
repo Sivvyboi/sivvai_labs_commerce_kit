@@ -1,10 +1,8 @@
 /**
  * lib/supabase/proxy.ts
  *
- * Supabase client and session updater for Next.js proxy.ts ONLY.
- *
- * Next.js proxy/middleware runs before requests reach server components.
- * It refreshes expired Auth tokens using cookies and passes updated cookies
+ * Supabase client and session updater for Next.js middleware / proxy ONLY.
+ * Refreshes expired Auth tokens using cookies and passes updated cookies
  * back in the response headers.
  */
 
@@ -34,15 +32,15 @@ export async function updateSession(request: NextRequest) {
           response = NextResponse.next({
             request,
           });
-          cookiesToSet.forEach(({ name, value, options }) =>
-            response.cookies.set(name, value, options)
-          );
+          cookiesToSet.forEach(({ name, value, options }) => {
+            response.cookies.set(name, value, options);
+          });
         },
       },
     }
   );
 
-  // Use getUser() to validate user session and refresh tokens reliably
+  // getUser() validates session and refreshes tokens if needed.
   const {
     data: { user },
   } = await supabase.auth.getUser();

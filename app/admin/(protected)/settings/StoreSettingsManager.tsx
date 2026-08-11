@@ -237,6 +237,11 @@ export function StoreSettingsManager({ settings, brand, flags }: StoreSettingsMa
                   <option value="USD">USD (US Dollar - $)</option>
                   <option value="EUR">EUR (Euro - €)</option>
                   <option value="GBP">GBP (British Pound - £)</option>
+                  <option value="KES">KES (Kenyan Shilling - KSh)</option>
+                  <option value="GHS">GHS (Ghanaian Cedi - GH₵)</option>
+                  <option value="CAD">CAD (Canadian Dollar - $)</option>
+                  <option value="AUD">AUD (Australian Dollar - $)</option>
+                  <option value="ZAR">ZAR (South African Rand - R)</option>
                 </select>
               </div>
 

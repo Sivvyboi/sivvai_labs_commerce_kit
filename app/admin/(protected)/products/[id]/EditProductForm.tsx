@@ -6,9 +6,10 @@
  * Client Component form for editing an existing product.
  * Features:
  *  - Info fields (Name, Slug, Category, Description)
- *  - Pricing fields (Base Price, Sale Price, Cost Price)
- *  - Status & Featured toggle
+ *  - Pricing fields (Base Price, Sale Price, Cost Price) with dynamic store currency
+ *  - Status (Draft / Published / Archived) with Publish, Unpublish, and Archive quick actions
  *  - Image Manager (add/remove image URLs)
+ *  - Option Group & Value Manager (Size, Color, etc.)
  *  - Variant Editor (edit SKU & price override for existing variants)
  *  - Archive action with confirmation dialog
  */
@@ -16,19 +17,31 @@
 import * as React from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { ArrowLeft, Save, Plus, Trash2, Archive, Eye } from "lucide-react";
+import { ArrowLeft, Save, Plus, Trash2, Archive, Eye, CheckCircle, EyeOff, RotateCcw, Upload, Loader2, ArrowRight } from "lucide-react";
 import { clsx } from "clsx";
 
 import { useAdmin } from "@/features/admin/hooks/useAdmin";
+import { useCurrency } from "@/components/shared/CurrencyProvider";
+import { compressImageInBrowser } from "@/lib/utils/image-compression";
 import {
   updateProductAction,
   archiveProductAction,
+  publishProductAction,
+  unpublishProductAction,
   addProductImageAction,
   removeProductImageAction,
   updateVariantAction,
+  createOptionGroupAction,
+  deleteOptionGroupAction,
+  addOptionValueAction,
+  deleteOptionValueAction,
+  restoreProductAction,
+  generateProductImageUploadUrlAction,
 } from "@/features/admin/actions/admin.actions";
 import { ConfirmDialog } from "@/components/admin/ui/ConfirmDialog";
 import { StatusBadge } from "@/components/admin/ui/StatusBadge";
+import { AnimatedFeedbackOverlay, type FeedbackStatus } from "@/components/admin/ui/AnimatedFeedbackOverlay";
+import { PublishProductModal } from "@/components/admin/ui/PublishProductModal";
 import type { ProductWithDetails } from "@/lib/db/products";
 import type { CategoryRow } from "@/lib/db/categories";
 
@@ -39,6 +52,7 @@ interface EditProductFormProps {
 
 export function EditProductForm({ product, categories }: EditProductFormProps) {
   const { execute, loading, error } = useAdmin();
+  const storeCurrency = useCurrency();
 
   // Basic Form State
   const [name, setName] = React.useState(product.name);
@@ -46,11 +60,11 @@ export function EditProductForm({ product, categories }: EditProductFormProps) {
   const [description, setDescription] = React.useState(product.description ?? "");
   const [categoryId, setCategoryId] = React.useState(product.category_id ?? "");
   const [status, setStatus] = React.useState(product.status);
-  const [priceNGN, setPriceNGN] = React.useState((product.base_price / 100).toString());
-  const [salePriceNGN, setSalePriceNGN] = React.useState(
+  const [price, setPrice] = React.useState((product.base_price / 100).toString());
+  const [salePrice, setSalePrice] = React.useState(
     product.sale_price ? (product.sale_price / 100).toString() : ""
   );
-  const [costPriceNGN, setCostPriceNGN] = React.useState(
+  const [costPrice, setCostPrice] = React.useState(
     product.cost_price ? (product.cost_price / 100).toString() : ""
   );
   const [isFeatured, setIsFeatured] = React.useState(product.is_featured);
@@ -60,26 +74,48 @@ export function EditProductForm({ product, categories }: EditProductFormProps) {
   // Image Manager State
   const [newImageUrl, setNewImageUrl] = React.useState("");
   const [newImageAlt, setNewImageAlt] = React.useState("");
+  const [uploadingImage, setUploadingImage] = React.useState(false);
+  const [uploadError, setUploadError] = React.useState<string | null>(null);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  // Option Group State
+  const [newOptionGroupName, setNewOptionGroupName] = React.useState("");
 
   // Confirm Archive Dialog
   const [archiveConfirmOpen, setArchiveConfirmOpen] = React.useState(false);
 
-  // Handle main form submission
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  // Publish Modal & Animated Feedback State
+  const [isPublishModalOpen, setIsPublishModalOpen] = React.useState(false);
+  const [feedback, setFeedback] = React.useState<{
+    status: FeedbackStatus;
+    title?: string;
+    message?: string;
+    errorDetails?: string | null;
+    onRetry?: () => void;
+  }>({ status: "idle" });
 
-    const basePriceKobo = Math.round((Number(priceNGN) || 0) * 100);
-    const salePriceKobo = salePriceNGN ? Math.round(Number(salePriceNGN) * 100) : null;
-    const costPriceKobo = costPriceNGN ? Math.round(Number(costPriceNGN) * 100) : null;
+  // Save draft modal handler — saves field updates and sets status to draft (mirroring publish flow)
+  async function handleSaveAsDraftModal() {
+    setIsPublishModalOpen(false);
+    setFeedback({
+      status: "loading",
+      title: "Saving Product Draft…",
+      message: "Writing product changes to Supabase database",
+    });
 
-    await execute(() =>
+    const basePriceKobo = Math.round((Number(price) || 0) * 100);
+    const salePriceKobo = salePrice ? Math.round(Number(salePrice) * 100) : null;
+    const costPriceKobo = costPrice ? Math.round(Number(costPrice) * 100) : null;
+
+    // 1. Update form field values first
+    const updateRes = await execute(() =>
       updateProductAction({
         id: product.id,
         name,
         slug,
         description: description || undefined,
         category_id: categoryId || null,
-        status: status as "draft" | "published" | "archived",
+        status: "draft",
         base_price: basePriceKobo,
         sale_price: salePriceKobo,
         cost_price: costPriceKobo,
@@ -88,6 +124,156 @@ export function EditProductForm({ product, categories }: EditProductFormProps) {
         seo_description: seoDescription || null,
       })
     );
+
+    if (updateRes && !updateRes.success) {
+      setFeedback({
+        status: "error",
+        title: "Save Draft Failed",
+        message: "Could not save product details in Supabase.",
+        errorDetails: updateRes.error ?? error ?? "Failed to save product fields",
+        onRetry: handleSaveAsDraftModal,
+      });
+      return;
+    }
+
+    // 2. Ensure status is set to draft in DB & catalog cache revalidated
+    const statusRes = await execute(() => unpublishProductAction(product.id));
+
+    if (statusRes?.success || updateRes?.success) {
+      setStatus("draft");
+      setFeedback({
+        status: "success",
+        title: "Saved as Draft!",
+        message: "Product updates have been saved to Supabase.",
+      });
+    } else {
+      setFeedback({
+        status: "error",
+        title: "Save Draft Failed",
+        message: "Could not set product status to draft in Supabase.",
+        errorDetails: statusRes?.error ?? error ?? "Unknown database error",
+        onRetry: handleSaveAsDraftModal,
+      });
+    }
+  }
+
+  // Publish modal handler
+  async function handlePublishModal() {
+    setIsPublishModalOpen(false);
+    setFeedback({
+      status: "loading",
+      title: "Publishing Product…",
+      message: "Syncing product details and publishing status to Supabase",
+    });
+
+    const basePriceKobo = Math.round((Number(price) || 0) * 100);
+    const salePriceKobo = salePrice ? Math.round(Number(salePrice) * 100) : null;
+    const costPriceKobo = costPrice ? Math.round(Number(costPrice) * 100) : null;
+
+    // 1. Update form field values first
+    await execute(() =>
+      updateProductAction({
+        id: product.id,
+        name,
+        slug,
+        description: description || undefined,
+        category_id: categoryId || null,
+        base_price: basePriceKobo,
+        sale_price: salePriceKobo,
+        cost_price: costPriceKobo,
+        is_featured: isFeatured,
+        seo_title: seoTitle || null,
+        seo_description: seoDescription || null,
+      })
+    );
+
+    // 2. Publish
+    const res = await execute(() => publishProductAction(product.id));
+
+    if (res?.success) {
+      setStatus("published");
+      setFeedback({
+        status: "success",
+        title: "Product Published!",
+        message: "This product is now live on your storefront catalog.",
+      });
+    } else {
+      setFeedback({
+        status: "error",
+        title: "Publish Failed",
+        message: "Could not publish product to Supabase.",
+        errorDetails: res?.error ?? error ?? "Unknown error",
+        onRetry: handlePublishModal,
+      });
+    }
+  }
+
+  // Unpublish modal handler
+  async function handleUnpublishModal() {
+    setIsPublishModalOpen(false);
+    setFeedback({
+      status: "loading",
+      title: "Unpublishing Product…",
+      message: "Setting status back to draft in Supabase",
+    });
+
+    const res = await execute(() => unpublishProductAction(product.id));
+    if (res?.success) {
+      setStatus("draft");
+      setFeedback({
+        status: "success",
+        title: "Unpublished to Draft",
+        message: "Product is now hidden from storefront catalog listings.",
+      });
+    } else {
+      setFeedback({
+        status: "error",
+        title: "Unpublish Failed",
+        message: "Failed to update product status.",
+        errorDetails: res?.error ?? error,
+        onRetry: handleUnpublishModal,
+      });
+    }
+  }
+
+  // Archive modal handler
+  async function handleArchiveModal() {
+    setIsPublishModalOpen(false);
+    setFeedback({
+      status: "loading",
+      title: "Archiving Product…",
+      message: "Archiving product record in Supabase",
+    });
+
+    const res = await execute(() => archiveProductAction(product.id));
+    if (res?.success) {
+      setStatus("archived");
+      setFeedback({
+        status: "success",
+        title: "Product Archived",
+        message: "Product has been moved to archived status.",
+      });
+    } else {
+      setFeedback({
+        status: "error",
+        title: "Archive Failed",
+        message: "Failed to archive product.",
+        errorDetails: res?.error ?? error,
+        onRetry: handleArchiveModal,
+      });
+    }
+  }
+
+  // Quick Action: Publish
+  async function handlePublish() {
+    const res = await execute(() => publishProductAction(product.id));
+    if (res?.success) setStatus("published");
+  }
+
+  // Quick Action: Unpublish
+  async function handleUnpublish() {
+    const res = await execute(() => unpublishProductAction(product.id));
+    if (res?.success) setStatus("draft");
   }
 
   // Handle Image Add
@@ -106,15 +292,78 @@ export function EditProductForm({ product, categories }: EditProductFormProps) {
     }
   }
 
+  // Handle Direct File Upload (with in-browser WebP compression)
+  async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const rawFile = e.target.files?.[0];
+    if (!rawFile) return;
+
+    setUploadError(null);
+    setUploadingImage(true);
+
+    try {
+      // Compress & convert to optimized WebP in browser before uploading
+      const compressedFile = await compressImageInBrowser(rawFile);
+
+      const signedRes = await generateProductImageUploadUrlAction({
+        filename: compressedFile.name,
+        contentType: compressedFile.type,
+      });
+
+      if (!signedRes.success || !signedRes.signedUrl || !signedRes.publicUrl) {
+        throw new Error(signedRes.error ?? "Failed to get signed upload URL");
+      }
+
+      const uploadRes = await fetch(signedRes.signedUrl, {
+        method: "PUT",
+        headers: { "Content-Type": compressedFile.type },
+        body: compressedFile,
+      });
+
+      if (!uploadRes.ok) {
+        throw new Error("Failed to upload image file to storage bucket");
+      }
+
+      const isPrimary = product.images.length === 0;
+      await execute(() =>
+        addProductImageAction(
+          product.id,
+          signedRes.publicUrl!,
+          rawFile.name.replace(/\.[^/.]+$/, ""),
+          isPrimary
+        )
+      );
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : "Image upload failed");
+    } finally {
+      setUploadingImage(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
+
   // Handle Image Remove
   async function handleRemoveImage(imageId: string) {
     await execute(() => removeProductImageAction(imageId, product.id));
+  }
+
+  // Handle Option Group Creation
+  async function handleAddOptionGroup(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newOptionGroupName.trim()) return;
+    const res = await execute(() => createOptionGroupAction(product.id, newOptionGroupName.trim()));
+    if (res?.success) setNewOptionGroupName("");
   }
 
   // Handle Archive Confirm
   async function handleArchiveConfirm() {
     await execute(() => archiveProductAction(product.id));
     setArchiveConfirmOpen(false);
+    setStatus("archived");
+  }
+
+  // Handle Restore
+  async function handleRestore() {
+    const res = await execute(() => restoreProductAction(product.id));
+    if (res?.success) setStatus("draft");
   }
 
   return (
@@ -131,30 +380,23 @@ export function EditProductForm({ product, categories }: EditProductFormProps) {
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-xl font-bold text-[var(--kit-text-primary)]">{product.name}</h1>
-              <StatusBadge status={product.status} />
+              <StatusBadge status={status} />
             </div>
             <p className="text-xs text-[var(--kit-text-secondary)]">ID: {product.id}</p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Storefront Preview */}
           <Link
             href={`/products/${product.slug}`}
             target="_blank"
-            className="inline-flex h-9 items-center gap-1.5 rounded-[var(--kit-radius-md)] border border-[var(--kit-border)] bg-[var(--kit-surface)] px-3 text-xs font-medium text-[var(--kit-text-secondary)] hover:bg-[var(--kit-muted)] transition-colors"
+            rel="noopener noreferrer"
+            title="Preview how product looks on storefront"
+            className="inline-flex h-9 items-center gap-1.5 rounded-[var(--kit-radius-md)] border border-[var(--kit-accent)]/30 bg-[var(--kit-accent)]/10 px-3.5 text-xs font-semibold text-[var(--kit-accent)] hover:bg-[var(--kit-accent)]/20 transition-colors"
           >
             <Eye size={14} /> Storefront Preview
           </Link>
-
-          {product.status !== "archived" && (
-            <button
-              type="button"
-              onClick={() => setArchiveConfirmOpen(true)}
-              className="inline-flex h-9 items-center gap-1.5 rounded-[var(--kit-radius-md)] border border-[var(--kit-danger)]/20 bg-[var(--kit-danger)]/10 px-3 text-xs font-medium text-[var(--kit-danger)] hover:bg-[var(--kit-danger)]/20 transition-colors"
-            >
-              <Archive size={14} /> Archive
-            </button>
-          )}
         </div>
       </div>
 
@@ -165,7 +407,7 @@ export function EditProductForm({ product, categories }: EditProductFormProps) {
       )}
 
       {/* Main Edit Form */}
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <form onSubmit={(e) => { e.preventDefault(); setIsPublishModalOpen(true); }} className="space-y-6">
         {/* Product Details Section */}
         <div className="rounded-[var(--kit-radius-lg)] border border-[var(--kit-border)] bg-[var(--kit-card)] p-6 shadow-[var(--kit-shadow-sm)] space-y-4">
           <h2 className="text-sm font-semibold text-[var(--kit-text-primary)]">Product Information</h2>
@@ -243,18 +485,18 @@ export function EditProductForm({ product, categories }: EditProductFormProps) {
 
         {/* Pricing */}
         <div className="rounded-[var(--kit-radius-lg)] border border-[var(--kit-border)] bg-[var(--kit-card)] p-6 shadow-[var(--kit-shadow-sm)] space-y-4">
-          <h2 className="text-sm font-semibold text-[var(--kit-text-primary)]">Pricing (NGN)</h2>
+          <h2 className="text-sm font-semibold text-[var(--kit-text-primary)]">Pricing ({storeCurrency})</h2>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <div>
-              <label htmlFor="edit-product-price-input" className="block text-xs font-medium text-[var(--kit-text-secondary)]">Base Price (₦)</label>
+              <label htmlFor="edit-product-price-input" className="block text-xs font-medium text-[var(--kit-text-secondary)]">Base Price</label>
               <input
                 id="edit-product-price-input"
                 type="number"
                 step="0.01"
                 min="0"
-                value={priceNGN}
-                onChange={(e) => setPriceNGN(e.target.value)}
+                value={price}
+                onChange={(e) => setPrice(e.target.value)}
                 required
                 className={clsx(
                   "mt-1 h-9 w-full rounded-[var(--kit-radius-md)] border border-[var(--kit-border)]",
@@ -265,14 +507,14 @@ export function EditProductForm({ product, categories }: EditProductFormProps) {
             </div>
 
             <div>
-              <label htmlFor="edit-product-saleprice-input" className="block text-xs font-medium text-[var(--kit-text-secondary)]">Sale Price (₦)</label>
+              <label htmlFor="edit-product-saleprice-input" className="block text-xs font-medium text-[var(--kit-text-secondary)]">Sale Price</label>
               <input
                 id="edit-product-saleprice-input"
                 type="number"
                 step="0.01"
                 min="0"
-                value={salePriceNGN}
-                onChange={(e) => setSalePriceNGN(e.target.value)}
+                value={salePrice}
+                onChange={(e) => setSalePrice(e.target.value)}
                 placeholder="Optional"
                 className={clsx(
                   "mt-1 h-9 w-full rounded-[var(--kit-radius-md)] border border-[var(--kit-border)]",
@@ -283,14 +525,14 @@ export function EditProductForm({ product, categories }: EditProductFormProps) {
             </div>
 
             <div>
-              <label htmlFor="edit-product-costprice-input" className="block text-xs font-medium text-[var(--kit-text-secondary)]">Cost Price (₦)</label>
+              <label htmlFor="edit-product-costprice-input" className="block text-xs font-medium text-[var(--kit-text-secondary)]">Cost Price</label>
               <input
                 id="edit-product-costprice-input"
                 type="number"
                 step="0.01"
                 min="0"
-                value={costPriceNGN}
-                onChange={(e) => setCostPriceNGN(e.target.value)}
+                value={costPrice}
+                onChange={(e) => setCostPrice(e.target.value)}
                 placeholder="Optional"
                 className={clsx(
                   "mt-1 h-9 w-full rounded-[var(--kit-radius-md)] border border-[var(--kit-border)]",
@@ -298,43 +540,6 @@ export function EditProductForm({ product, categories }: EditProductFormProps) {
                   "focus:border-[var(--kit-accent)] focus:outline-none"
                 )}
               />
-            </div>
-          </div>
-        </div>
-
-        {/* Status & Options */}
-        <div className="rounded-[var(--kit-radius-lg)] border border-[var(--kit-border)] bg-[var(--kit-card)] p-6 shadow-[var(--kit-shadow-sm)] space-y-4">
-          <h2 className="text-sm font-semibold text-[var(--kit-text-primary)]">Status & Settings</h2>
-
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div>
-              <label htmlFor="edit-product-status-select" className="block text-xs font-medium text-[var(--kit-text-secondary)]">Product Status</label>
-              <select
-                id="edit-product-status-select"
-                value={status}
-                onChange={(e) => setStatus(e.target.value)}
-                className={clsx(
-                  "mt-1 h-9 w-full rounded-[var(--kit-radius-md)] border border-[var(--kit-border)]",
-                  "bg-[var(--kit-surface)] px-3 text-sm text-[var(--kit-text-primary)]",
-                  "focus:border-[var(--kit-accent)] focus:outline-none"
-                )}
-              >
-                <option value="draft">Draft</option>
-                <option value="published">Published</option>
-                <option value="archived">Archived</option>
-              </select>
-            </div>
-
-            <div className="flex items-center pt-5">
-              <label className="flex items-center gap-2 text-sm text-[var(--kit-text-primary)] cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={isFeatured}
-                  onChange={(e) => setIsFeatured(e.target.checked)}
-                  className="h-4 w-4 rounded border-[var(--kit-border)] text-[var(--kit-accent)] focus:ring-[var(--kit-accent)]"
-                />
-                Feature on Homepage
-              </label>
             </div>
           </div>
         </div>
@@ -379,17 +584,6 @@ export function EditProductForm({ product, categories }: EditProductFormProps) {
             </div>
           </div>
         </div>
-
-        {/* Save button for main form */}
-        <div className="flex justify-end">
-          <button
-            type="submit"
-            disabled={loading}
-            className="inline-flex h-9 items-center gap-1.5 rounded-[var(--kit-radius-md)] bg-[var(--kit-accent)] px-4 text-xs font-medium text-white hover:opacity-90 transition-opacity disabled:opacity-50"
-          >
-            <Save size={14} /> {loading ? "Saving…" : "Save Product Details"}
-          </button>
-        </div>
       </form>
 
       {/* Image Manager Section */}
@@ -432,16 +626,50 @@ export function EditProductForm({ product, categories }: EditProductFormProps) {
           </div>
         )}
 
-        {/* Add Image Form */}
-        <form onSubmit={handleAddImage} className="pt-2 border-t border-[var(--kit-border)]">
-          <p className="text-xs font-medium text-[var(--kit-text-secondary)] mb-2">Add Image URL</p>
-          <div className="flex flex-col gap-2 sm:flex-row">
+        {/* Add Image Options */}
+        <div className="pt-3 border-t border-[var(--kit-border)] space-y-3">
+          {uploadError && (
+            <div className="rounded-[var(--kit-radius-md)] border border-[var(--kit-danger)]/20 bg-[var(--kit-danger)]/10 p-2.5 text-xs text-[var(--kit-danger)]">
+              {uploadError}
+            </div>
+          )}
+
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+            {/* Direct File Upload Button */}
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleFileUpload}
+              accept="image/jpeg,image/png,image/webp,image/avif"
+              className="hidden"
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={loading || uploadingImage}
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-[var(--kit-radius-md)] bg-[var(--kit-accent)] px-4 text-xs font-semibold text-white hover:opacity-90 transition-opacity disabled:opacity-50"
+            >
+              {uploadingImage ? (
+                <>
+                  <Loader2 size={14} className="animate-spin" /> Uploading to Supabase...
+                </>
+              ) : (
+                <>
+                  <Upload size={14} /> Upload Image File
+                </>
+              )}
+            </button>
+
+            <span className="text-xs text-[var(--kit-text-muted)] text-center sm:text-left">or add via URL</span>
+          </div>
+
+          {/* Add Image URL Form */}
+          <form onSubmit={handleAddImage} className="flex flex-col gap-2 sm:flex-row">
             <input
               type="url"
               value={newImageUrl}
               onChange={(e) => setNewImageUrl(e.target.value)}
               placeholder="https://example.com/image.jpg"
-              required
               className={clsx(
                 "h-9 flex-1 rounded-[var(--kit-radius-md)] border border-[var(--kit-border)]",
                 "bg-[var(--kit-surface)] px-3 text-sm text-[var(--kit-text-primary)]",
@@ -461,10 +689,56 @@ export function EditProductForm({ product, categories }: EditProductFormProps) {
             />
             <button
               type="submit"
-              disabled={loading || !newImageUrl.trim()}
+              disabled={loading || uploadingImage || !newImageUrl.trim()}
+              className={clsx(
+                "inline-flex h-9 items-center justify-center gap-1 rounded-[var(--kit-radius-md)] px-4 text-xs font-medium transition-colors",
+                newImageUrl.trim()
+                  ? "bg-[var(--kit-accent)] text-white hover:opacity-90"
+                  : "border border-[var(--kit-border)] bg-[var(--kit-surface)] text-[var(--kit-text-muted)] cursor-not-allowed opacity-60"
+              )}
+            >
+              <Plus size={14} /> Add URL
+            </button>
+          </form>
+        </div>
+      </div>
+
+      {/* Option Groups & Values Section */}
+      <div className="rounded-[var(--kit-radius-lg)] border border-[var(--kit-border)] bg-[var(--kit-card)] p-6 shadow-[var(--kit-shadow-sm)] space-y-4">
+        <h2 className="text-sm font-semibold text-[var(--kit-text-primary)]">Option Groups & Attribute Values</h2>
+
+        {(product.option_groups ?? []).length === 0 ? (
+          <p className="text-xs text-[var(--kit-text-muted)]">No option groups added yet (e.g. Size, Color).</p>
+        ) : (
+          <div className="space-y-4">
+            {(product.option_groups ?? []).map((group) => (
+              <OptionGroupCard key={group.id} group={group} productId={product.id} />
+            ))}
+          </div>
+        )}
+
+        {/* Add Option Group Form */}
+        <form onSubmit={handleAddOptionGroup} className="pt-2 border-t border-[var(--kit-border)]">
+          <p className="text-xs font-medium text-[var(--kit-text-secondary)] mb-2">Create New Option Group</p>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={newOptionGroupName}
+              onChange={(e) => setNewOptionGroupName(e.target.value)}
+              placeholder="e.g. Size, Color, Material"
+              required
+              className={clsx(
+                "h-9 flex-1 rounded-[var(--kit-radius-md)] border border-[var(--kit-border)]",
+                "bg-[var(--kit-surface)] px-3 text-sm text-[var(--kit-text-primary)]",
+                "focus:border-[var(--kit-accent)] focus:outline-none"
+              )}
+            />
+            <button
+              type="submit"
+              disabled={loading || !newOptionGroupName.trim()}
               className="inline-flex h-9 items-center justify-center gap-1 rounded-[var(--kit-radius-md)] border border-[var(--kit-border)] bg-[var(--kit-surface)] px-3 text-xs font-medium text-[var(--kit-text-primary)] hover:bg-[var(--kit-muted)] transition-colors disabled:opacity-50"
             >
-              <Plus size={14} /> Add Image
+              <Plus size={14} /> Add Option Group
             </button>
           </div>
         </form>
@@ -477,17 +751,56 @@ export function EditProductForm({ product, categories }: EditProductFormProps) {
 
           <div className="divide-y divide-[var(--kit-border)] border border-[var(--kit-border)] rounded-[var(--kit-radius-md)] overflow-hidden">
             {product.variants.map((v) => (
-              <VariantRow key={v.id} variant={v} />
+              <VariantRow key={v.id} variant={v} storeCurrency={storeCurrency} />
             ))}
           </div>
         </div>
       )}
 
+      {/* Bottom Action Bar: Next (Review & Publish) at the end of all cards */}
+      <div className="flex justify-end pt-6 pb-12 border-t border-[var(--kit-border)]">
+        <button
+          type="button"
+          onClick={() => setIsPublishModalOpen(true)}
+          className="inline-flex h-11 items-center gap-2.5 rounded-xl bg-[var(--kit-accent)] px-6 text-sm font-bold text-white hover:opacity-90 transition-all shadow-md hover:shadow-lg active:scale-98"
+        >
+          <span>Next: Review & Publish</span>
+          <ArrowRight className="h-4 w-4" />
+        </button>
+      </div>
+
+      {/* Review & Publish Modal */}
+      <PublishProductModal
+        isOpen={isPublishModalOpen}
+        productName={name}
+        productSlug={slug}
+        status={status as "draft" | "published" | "archived"}
+        isFeatured={isFeatured}
+        imageCount={product.images?.length ?? 0}
+        variantCount={product.variants?.length ?? 0}
+        onToggleFeatured={(val) => setIsFeatured(val)}
+        onSaveAsDraft={handleSaveAsDraftModal}
+        onPublish={handlePublishModal}
+        onUnpublish={handleUnpublishModal}
+        onArchive={handleArchiveModal}
+        onClose={() => setIsPublishModalOpen(false)}
+      />
+
+      {/* Full-Screen Animated Feedback Overlay */}
+      <AnimatedFeedbackOverlay
+        status={feedback.status}
+        title={feedback.title}
+        message={feedback.message}
+        errorDetails={feedback.errorDetails}
+        onClose={() => setFeedback({ status: "idle" })}
+        onRetry={feedback.onRetry}
+      />
+
       {/* Archive Confirm Dialog */}
       <ConfirmDialog
         open={archiveConfirmOpen}
         onClose={() => setArchiveConfirmOpen(false)}
-        onConfirm={handleArchiveConfirm}
+        onConfirm={handleArchiveModal}
         title="Archive Product?"
         description="This will set the product status to archived and hide it from storefront catalog listings."
         confirmLabel="Archive Product"
@@ -498,15 +811,99 @@ export function EditProductForm({ product, categories }: EditProductFormProps) {
   );
 }
 
-function VariantRow({ variant }: { variant: ProductWithDetails["variants"][0] }) {
+function OptionGroupCard({
+  group,
+  productId,
+}: {
+  group: NonNullable<ProductWithDetails["option_groups"]>[0];
+  productId: string;
+}) {
+  const { execute, loading } = useAdmin();
+  const [newValueLabel, setNewValueLabel] = React.useState("");
+
+  async function handleDeleteGroup() {
+    await execute(() => deleteOptionGroupAction(group.id, productId));
+  }
+
+  async function handleAddValue(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newValueLabel.trim()) return;
+    const res = await execute(() => addOptionValueAction(group.id, newValueLabel.trim(), productId));
+    if (res?.success) setNewValueLabel("");
+  }
+
+  async function handleDeleteValue(valueId: string) {
+    await execute(() => deleteOptionValueAction(valueId, productId));
+  }
+
+  return (
+    <div className="rounded-[var(--kit-radius-md)] border border-[var(--kit-border)] bg-[var(--kit-surface)] p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <h3 className="text-xs font-bold text-[var(--kit-text-primary)] uppercase tracking-wider">{group.name}</h3>
+        <button
+          type="button"
+          onClick={handleDeleteGroup}
+          disabled={loading}
+          className="text-xs text-[var(--kit-danger)] hover:opacity-80 p-1 flex items-center gap-1"
+        >
+          <Trash2 size={12} /> Remove Group
+        </button>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        {(group.values ?? []).map((val) => (
+          <span
+            key={val.id}
+            className="inline-flex items-center gap-1.5 rounded-[var(--kit-radius-sm)] border border-[var(--kit-border)] bg-[var(--kit-card)] px-2.5 py-1 text-xs text-[var(--kit-text-primary)]"
+          >
+            {val.label}
+            <button
+              type="button"
+              onClick={() => handleDeleteValue(val.id)}
+              disabled={loading}
+              className="text-[var(--kit-text-muted)] hover:text-[var(--kit-danger)] transition-colors"
+            >
+              ×
+            </button>
+          </span>
+        ))}
+      </div>
+
+      <form onSubmit={handleAddValue} className="flex gap-2 pt-1">
+        <input
+          type="text"
+          value={newValueLabel}
+          onChange={(e) => setNewValueLabel(e.target.value)}
+          placeholder={`Add ${group.name} value (e.g. Medium)`}
+          className="h-8 flex-1 rounded-[var(--kit-radius-md)] border border-[var(--kit-border)] bg-[var(--kit-card)] px-2.5 text-xs text-[var(--kit-text-primary)]"
+        />
+        <button
+          type="submit"
+          disabled={loading || !newValueLabel.trim()}
+          className="h-8 rounded-[var(--kit-radius-md)] border border-[var(--kit-border)] bg-[var(--kit-card)] px-3 text-xs font-medium text-[var(--kit-text-primary)] hover:bg-[var(--kit-muted)] transition-colors disabled:opacity-50"
+        >
+          Add Value
+        </button>
+      </form>
+    </div>
+  );
+}
+
+function VariantRow({
+  variant,
+  storeCurrency,
+}: {
+  variant: ProductWithDetails["variants"][0];
+  storeCurrency: string;
+}) {
   const { execute, loading } = useAdmin();
   const [sku, setSku] = React.useState(variant.sku ?? "");
-  const [overrideNGN, setOverrideNGN] = React.useState(
+  const [overridePrice, setOverridePrice] = React.useState(
     variant.price_override ? (variant.price_override / 100).toString() : ""
   );
 
   async function handleSaveVariant() {
-    const overrideKobo = overrideNGN ? Math.round(Number(overrideNGN) * 100) : null;
+    const overrideKobo = overridePrice ? Math.round(Number(overridePrice) * 100) : null;
     await execute(() =>
       updateVariantAction({
         id: variant.id,
@@ -518,7 +915,14 @@ function VariantRow({ variant }: { variant: ProductWithDetails["variants"][0] })
 
   return (
     <div className="flex flex-col gap-2 p-3 sm:flex-row sm:items-center sm:justify-between bg-[var(--kit-surface)]">
-      <div className="text-xs font-mono text-[var(--kit-text-secondary)]">ID: {variant.id.slice(0, 8)}…</div>
+      <div className="flex items-center gap-2 text-xs font-mono text-[var(--kit-text-secondary)]">
+        <span>SKU: {variant.sku || "None"}</span>
+        {variant.is_default && (
+          <span className="rounded bg-[var(--kit-accent)]/10 px-1.5 py-0.5 text-[10px] font-semibold text-[var(--kit-accent)] font-sans">
+            Default
+          </span>
+        )}
+      </div>
       <div className="flex flex-1 items-center gap-3 sm:justify-end">
         <input
           type="text"
@@ -530,9 +934,9 @@ function VariantRow({ variant }: { variant: ProductWithDetails["variants"][0] })
         <input
           type="number"
           step="0.01"
-          value={overrideNGN}
-          onChange={(e) => setOverrideNGN(e.target.value)}
-          placeholder="Price Override (₦)"
+          value={overridePrice}
+          onChange={(e) => setOverridePrice(e.target.value)}
+          placeholder={`Override (${storeCurrency})`}
           className="h-8 w-36 rounded-[var(--kit-radius-md)] border border-[var(--kit-border)] bg-[var(--kit-card)] px-2 text-xs text-[var(--kit-text-primary)]"
         />
         <button

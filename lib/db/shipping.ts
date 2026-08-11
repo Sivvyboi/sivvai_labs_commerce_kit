@@ -52,3 +52,36 @@ export async function findShippingRatesByZone(zoneId: string): Promise<ShippingR
   if (error) throw error;
   return (data || []) as unknown as ShippingRateRow[];
 }
+
+export async function findMatchingShippingZone(state?: string): Promise<ShippingZoneRow | null> {
+  const supabase = await createClient();
+  const { data: zones, error } = await supabase
+    .from("shipping_zones")
+    .select("*");
+
+  if (error || !zones || zones.length === 0) return null;
+  if (!state) return zones[0] ?? null;
+
+  const normalizedState = state.trim().toLowerCase();
+  const matched = zones.find((z) =>
+    z.regions.some((r) => r.trim().toLowerCase() === normalizedState)
+  );
+
+  return matched ?? zones[0] ?? null;
+}
+
+export async function findShippingRateForMethodAndZone(
+  fulfilmentMethodId: string,
+  zoneId: string
+): Promise<ShippingRateRow | null> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("shipping_rates")
+    .select("*")
+    .eq("fulfilment_method_id", fulfilmentMethodId)
+    .eq("zone_id", zoneId)
+    .maybeSingle();
+
+  if (error || !data) return null;
+  return data as unknown as ShippingRateRow;
+}

@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import type {
   PaymentProvider,
   InitializePaymentParams,
@@ -75,10 +76,24 @@ export class PaystackProvider implements PaymentProvider {
     };
   }
 
-  verifyWebhookSignature(_payload: string | Record<string, unknown>, signature: string): boolean {
+  verifyWebhookSignature(rawPayload: string, signature: string): boolean {
     const webhookSecret = process.env.PAYSTACK_WEBHOOK_SECRET || this.secretKey;
-    if (!webhookSecret) return true; // dev fallback
-    // Basic verification check placeholder
-    return !!signature;
+    if (!webhookSecret || !signature) {
+      return false;
+    }
+
+    try {
+      const expectedSignature = crypto
+        .createHmac("sha512", webhookSecret)
+        .update(rawPayload)
+        .digest("hex");
+
+      return crypto.timingSafeEqual(
+        Buffer.from(expectedSignature, "utf-8"),
+        Buffer.from(signature, "utf-8")
+      );
+    } catch {
+      return false;
+    }
   }
 }

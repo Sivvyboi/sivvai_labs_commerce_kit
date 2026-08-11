@@ -70,7 +70,6 @@ export function ProductCard({
       await addItem({
         variantId: firstVariantId,
         quantity: 1,
-        unitPriceSnapshot: Number(product.base_price),
       });
     } finally {
       setIsAdding(false);
@@ -132,10 +131,10 @@ export function ProductCard({
         {/* Price & Quick Add Footer */}
         <div className="mt-auto flex items-center justify-between pt-3 gap-2">
           <Price
-            amount={Number(product.base_price)}
+            amount={Number(product.base_price) / 100}
             originalAmount={
               product.compare_at_price
-                ? Number(product.compare_at_price)
+                ? Number(product.compare_at_price) / 100
                 : undefined
             }
             size="sm"

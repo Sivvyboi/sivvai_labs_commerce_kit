@@ -15,9 +15,10 @@
  * 6. Return standardized { success: boolean; data?: T; error?: string } result.
  */
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { requirePermission } from "@/lib/auth/admin-guard";
 import { logAuditEvent } from "@/services/authz-service";
+import { createClient } from "@/lib/supabase/server";
 
 import * as productService from "@/services/product-service";
 import * as categoryService from "@/services/category-service";
@@ -65,20 +66,24 @@ export async function createProductAction(input: CreateProductAdminInput) {
     await requirePermission("manage_products");
     const validated = CreateProductAdminSchema.parse(input);
 
-    const product = await productService.createProductAdmin({
-      name: validated.name,
-      slug: validated.slug,
-      description: validated.description ?? null,
-      category_id: validated.category_id ?? null,
-      status: validated.status,
-      base_price: validated.base_price,
-      sale_price: validated.sale_price ?? null,
-      compare_at_price: validated.compare_at_price ?? null,
-      cost_price: validated.cost_price ?? null,
-      is_featured: validated.is_featured,
-      seo_title: validated.seo_title ?? null,
-      seo_description: validated.seo_description ?? null,
-    });
+    const product = await productService.createProductAdmin(
+      {
+        name: validated.name,
+        slug: validated.slug,
+        description: validated.description ?? null,
+        category_id: validated.category_id ?? null,
+        status: validated.status,
+        base_price: validated.base_price,
+        sale_price: validated.sale_price ?? null,
+        compare_at_price: validated.compare_at_price ?? null,
+        cost_price: validated.cost_price ?? null,
+        is_featured: validated.is_featured,
+        seo_title: validated.seo_title ?? null,
+        seo_description: validated.seo_description ?? null,
+      },
+      validated.initial_stock ?? 0,
+      validated.sku ?? undefined
+    );
 
     await logAuditEvent({
       action: "product.create",
@@ -87,6 +92,8 @@ export async function createProductAction(input: CreateProductAdminInput) {
       metadata: { name: product.name, slug: product.slug },
     });
 
+    revalidateTag("catalog", "default");
+    revalidatePath("/", "layout");
     revalidatePath("/admin/products");
     revalidatePath("/admin");
     return { success: true, product };
@@ -102,7 +109,10 @@ export async function updateProductAction(input: UpdateProductAdminInput) {
   try {
     await requirePermission("manage_products");
     const validated = UpdateProductAdminSchema.parse(input);
-    const { id, ...data } = validated;
+    // Destructure out cost_price — it is not a column on the products table
+    // (it is a front-end-only field used to derive margin) and passing it to
+    // the DB causes a 400 column-not-found error.
+    const { id, cost_price: _cost, ...data } = validated;
 
     const updated = await productService.updateProductAdmin(id, {
       ...data,
@@ -118,6 +128,7 @@ export async function updateProductAction(input: UpdateProductAdminInput) {
       entityId: id,
     });
 
+    revalidateTag("catalog", "default");
     revalidatePath(`/admin/products/${id}`);
     revalidatePath("/admin/products");
     return { success: true, product: updated };
@@ -140,6 +151,7 @@ export async function archiveProductAction(id: string) {
       entityId: id,
     });
 
+    revalidateTag("catalog", "default");
     revalidatePath("/admin/products");
     revalidatePath("/admin");
     return { success: true, product: archived };
@@ -147,6 +159,29 @@ export async function archiveProductAction(id: string) {
     return {
       success: false,
       error: err instanceof Error ? err.message : "Failed to archive product",
+    };
+  }
+}
+
+export async function restoreProductAction(id: string) {
+  try {
+    await requirePermission("manage_products");
+    const restored = await productService.restoreProduct(id);
+
+    await logAuditEvent({
+      action: "product.restore",
+      entityType: "product",
+      entityId: id,
+    });
+
+    revalidateTag("catalog", "default");
+    revalidatePath("/admin/products");
+    revalidatePath("/admin");
+    return { success: true, product: restored };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to restore product",
     };
   }
 }
@@ -162,12 +197,37 @@ export async function publishProductAction(id: string) {
       entityId: id,
     });
 
+    revalidateTag("catalog", "default");
+    revalidatePath("/", "layout");
     revalidatePath("/admin/products");
     return { success: true, product: published };
   } catch (err) {
     return {
       success: false,
       error: err instanceof Error ? err.message : "Failed to publish product",
+    };
+  }
+}
+
+export async function unpublishProductAction(id: string) {
+  try {
+    await requirePermission("manage_products");
+    const unpublished = await productService.unpublishProduct(id);
+
+    await logAuditEvent({
+      action: "product.unpublish",
+      entityType: "product",
+      entityId: id,
+    });
+
+    revalidateTag("catalog", "default");
+    revalidatePath("/", "layout");
+    revalidatePath("/admin/products");
+    return { success: true, product: unpublished };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to unpublish product",
     };
   }
 }
@@ -184,6 +244,7 @@ export async function duplicateProductAction(id: string) {
       metadata: { original_id: id },
     });
 
+    revalidateTag("catalog", "default");
     revalidatePath("/admin/products");
     return { success: true, product: duplicate };
   } catch (err) {
@@ -251,12 +312,78 @@ export async function removeProductImageAction(imageId: string, productId: strin
       entityId: productId,
     });
 
+    revalidateTag("catalog", "default");
+    revalidatePath("/", "layout");
     revalidatePath(`/admin/products/${productId}`);
     return { success: true };
   } catch (err) {
     return {
       success: false,
       error: err instanceof Error ? err.message : "Failed to remove image",
+    };
+  }
+}
+
+export async function createOptionGroupAction(productId: string, name: string) {
+  try {
+    await requirePermission("manage_products");
+    const group = await productService.createOptionGroup(productId, name);
+    revalidateTag("catalog", "default");
+    revalidatePath("/", "layout");
+    revalidatePath(`/admin/products/${productId}`);
+    return { success: true, group };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to create option group",
+    };
+  }
+}
+
+export async function deleteOptionGroupAction(groupId: string, productId: string) {
+  try {
+    await requirePermission("manage_products");
+    await productService.deleteOptionGroup(groupId);
+    revalidateTag("catalog", "default");
+    revalidatePath("/", "layout");
+    revalidatePath(`/admin/products/${productId}`);
+    return { success: true };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to delete option group",
+    };
+  }
+}
+
+export async function addOptionValueAction(optionGroupId: string, label: string, productId: string) {
+  try {
+    await requirePermission("manage_products");
+    const value = await productService.addOptionValue(optionGroupId, label);
+    revalidateTag("catalog", "default");
+    revalidatePath("/", "layout");
+    revalidatePath(`/admin/products/${productId}`);
+    return { success: true, value };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to add option value",
+    };
+  }
+}
+
+export async function deleteOptionValueAction(valueId: string, productId: string) {
+  try {
+    await requirePermission("manage_products");
+    await productService.deleteOptionValue(valueId);
+    revalidateTag("catalog", "default");
+    revalidatePath("/", "layout");
+    revalidatePath(`/admin/products/${productId}`);
+    return { success: true };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to delete option value",
     };
   }
 }
@@ -282,6 +409,7 @@ export async function createCategoryAction(input: CreateCategoryAdminInput) {
       entityId: category.id,
     });
 
+    revalidateTag("catalog", "default");
     revalidatePath("/admin/categories");
     return { success: true, category };
   } catch (err) {
@@ -309,6 +437,7 @@ export async function updateCategoryAction(input: UpdateCategoryAdminInput) {
       entityId: id,
     });
 
+    revalidateTag("catalog", "default");
     revalidatePath("/admin/categories");
     return { success: true, category: updated };
   } catch (err) {
@@ -330,6 +459,7 @@ export async function archiveCategoryAction(id: string) {
       entityId: id,
     });
 
+    revalidateTag("catalog", "default");
     revalidatePath("/admin/categories");
     return { success: true, category };
   } catch (err) {
@@ -351,6 +481,7 @@ export async function restoreCategoryAction(id: string) {
       entityId: id,
     });
 
+    revalidateTag("catalog", "default");
     revalidatePath("/admin/categories");
     return { success: true, category };
   } catch (err) {
@@ -608,6 +739,8 @@ export async function updateStoreSettingsAction(id: string, input: UpdateStoreSe
       entityId: id,
     });
 
+    revalidateTag("store_settings", "default");
+    revalidatePath("/", "layout");
     revalidatePath("/admin/settings");
     return { success: true, settings };
   } catch (err) {
@@ -664,6 +797,51 @@ export async function updateFeatureFlagAction(input: UpdateFeatureFlagAdminInput
     return {
       success: false,
       error: err instanceof Error ? err.message : "Failed to update feature flag",
+    };
+  }
+}
+
+export async function generateProductImageUploadUrlAction(params: {
+  filename: string;
+  contentType: string;
+}) {
+  try {
+    await requirePermission("manage_products");
+
+    const allowedTypes = ["image/jpeg", "image/png", "image/webp", "image/avif"];
+    if (!allowedTypes.includes(params.contentType)) {
+      throw new Error(
+        `File type ${params.contentType} is not allowed. Allowed types: jpeg, png, webp, avif`
+      );
+    }
+
+    const supabase = await createClient();
+    const cleanFilename = params.filename.replace(/[^a-zA-Z0-9.-]/g, "_");
+    const filePath = `public/${Date.now()}-${cleanFilename}`;
+
+    const { data, error } = await supabase.storage
+      .from("product-images")
+      .createSignedUploadUrl(filePath);
+
+    if (error || !data) {
+      throw new Error(`Failed to create signed upload URL: ${error?.message}`);
+    }
+
+    const publicUrlData = supabase.storage
+      .from("product-images")
+      .getPublicUrl(filePath);
+
+    return {
+      success: true,
+      signedUrl: data.signedUrl,
+      token: data.token,
+      path: data.path,
+      publicUrl: publicUrlData.data.publicUrl,
+    };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to generate upload URL",
     };
   }
 }

@@ -57,7 +57,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "Store",
     items: [
       { label: "Activity", href: "/admin/activity", icon: Activity, permission: "view_activity" },
-      { label: "Users", href: "/admin/users", icon: UserCheck, permission: "manage_users" },
+      { label: "Team", href: "/admin/team", icon: UserCheck, permission: "manage_users" },
       { label: "Settings", href: "/admin/settings", icon: Settings, permission: "manage_settings" },
     ],
   },

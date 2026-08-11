@@ -1,3 +1,5 @@
+"use client";
+
 /**
  * components/shared/Price.tsx
  *
@@ -9,15 +11,15 @@
 
 import * as React from "react";
 import { formatCurrency } from "@/lib/utils/format";
-import { localizationConfig } from "@/config/localization";
+import { useCurrency } from "@/components/shared/CurrencyProvider";
 import { cn } from "@/lib/utils/cn";
 
 export interface PriceProps extends React.HTMLAttributes<HTMLSpanElement> {
-  /** Numeric price amount in major units (e.g. 15000 for ₦15,000.00) */
+  /** Numeric price amount in major units (e.g. 150 for 150.00) */
   amount: number;
   /** Optional compare-at price for sale items */
   originalAmount?: number;
-  /** Currency code override. Defaults to config/localization.ts currency */
+  /** Currency code override. Defaults to store settings currency */
   currency?: string;
   /** Text sizing variant */
   size?: "sm" | "md" | "lg" | "xl";
@@ -40,11 +42,14 @@ const originalSizeClasses = {
 export function Price({
   amount,
   originalAmount,
-  currency = localizationConfig.currency,
+  currency: currencyProp,
   size = "md",
   className,
   ...props
 }: PriceProps) {
+  const storeCurrency = useCurrency();
+  const currency = currencyProp || storeCurrency;
+
   const formattedPrice = formatCurrency(amount, currency);
   const isOnSale = originalAmount !== undefined && originalAmount > amount;
   const formattedOriginalPrice = isOnSale

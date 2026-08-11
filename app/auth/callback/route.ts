@@ -2,25 +2,99 @@
  * app/auth/callback/route.ts
  *
  * Auth Callback Route Handler.
- * Exchanges the PKCE code for a session when a user clicks an email confirmation or password reset link.
+ * Handles:
+ *   1. Standard PKCE code exchange (password reset, email confirmation)
+ *   2. Admin invitation acceptance — matches token, creates admin_users record
  */
 
 import { type NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
+  const type = searchParams.get("type");
+  const invitationToken = searchParams.get("token");
   const next = searchParams.get("next") || "/admin";
 
-  if (code) {
-    const supabase = await createClient();
-    const { error } = await supabase.auth.exchangeCodeForSession(code);
-    if (!error) {
-      return NextResponse.redirect(`${origin}${next}`);
+  if (!code) {
+    return NextResponse.redirect(`${origin}/admin/login?error=auth_callback_failed`);
+  }
+
+  const supabase = await createClient();
+  const { data: sessionData, error } = await supabase.auth.exchangeCodeForSession(code);
+
+  if (error || !sessionData?.session) {
+    return NextResponse.redirect(`${origin}/admin/login?error=auth_callback_failed`);
+  }
+
+  // --- Admin Invitation acceptance ---
+  if (type === "admin_invite" && invitationToken) {
+    try {
+      const adminSupabase = createAdminClient();
+      const user = sessionData.session.user;
+
+      // Look up the invitation
+      const { data: invitation, error: invErr } = await adminSupabase
+        .from("admin_invitations")
+        .select("id, email, role_id, status, expires_at")
+        .eq("token", invitationToken)
+        .eq("status", "pending")
+        .single();
+
+      if (invErr || !invitation) {
+        // Invitation not found or already used — still let the user log in but
+        // redirect to an error page
+        return NextResponse.redirect(`${origin}/admin/login?error=invitation_invalid`);
+      }
+
+      // Check expiry
+      if (new Date(invitation.expires_at) < new Date()) {
+        await adminSupabase
+          .from("admin_invitations")
+          .update({ status: "expired" })
+          .eq("id", invitation.id);
+        return NextResponse.redirect(`${origin}/admin/login?error=invitation_expired`);
+      }
+
+      // Verify email matches
+      if (user.email?.toLowerCase() !== invitation.email.toLowerCase()) {
+        return NextResponse.redirect(`${origin}/admin/login?error=invitation_email_mismatch`);
+      }
+
+      // Check if admin_users record already exists
+      const { data: existingAdmin } = await adminSupabase
+        .from("admin_users")
+        .select("id")
+        .eq("auth_user_id", user.id)
+        .maybeSingle();
+
+      if (!existingAdmin) {
+        // Create admin_users record
+        await adminSupabase.from("admin_users").insert({
+          auth_user_id: user.id,
+          role_id: invitation.role_id,
+          is_active: true,
+          is_protected_owner: false,
+        });
+      }
+
+      // Mark invitation as accepted
+      await adminSupabase
+        .from("admin_invitations")
+        .update({
+          status: "accepted",
+          accepted_at: new Date().toISOString(),
+        })
+        .eq("id", invitation.id);
+
+      return NextResponse.redirect(`${origin}/admin?welcome=1`);
+    } catch {
+      return NextResponse.redirect(`${origin}/admin/login?error=invitation_failed`);
     }
   }
 
-  // Return user to login with error query param if exchange fails
-  return NextResponse.redirect(`${origin}/admin/login?error=auth_callback_failed`);
+  // --- Standard callback (password reset, email confirmation) ---
+  return NextResponse.redirect(`${origin}${next}`);
 }

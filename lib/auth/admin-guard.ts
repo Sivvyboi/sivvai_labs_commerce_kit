@@ -9,6 +9,7 @@ import "server-only";
 
 import { redirect } from "next/navigation";
 import { getCurrentAdminContext, type AdminContext } from "@/services/authz-service";
+import { UnauthorizedError, ForbiddenError } from "@/lib/errors";
 import type { User } from "@supabase/supabase-js";
 
 /**
@@ -25,9 +26,32 @@ export async function requireAdmin(): Promise<User> {
 
 /**
  * Ensures the requesting user is an authenticated and active admin AND possesses the target permission.
- * Redirects to /admin/login if unauthenticated/deactivated, or /admin/forbidden if unauthorized.
+ * Throws typed UnauthorizedError / ForbiddenError so Server Action try/catch blocks return structured errors.
  */
 export async function requirePermission(permission: string): Promise<AdminContext> {
+  const ctx = await getCurrentAdminContext();
+  if (!ctx) {
+    throw new UnauthorizedError("Admin authentication required");
+  }
+
+  const hasPerm =
+    ctx.permissions.includes(permission) ||
+    (permission === "view_orders" && ctx.permissions.includes("manage_orders")) ||
+    (permission === "view_customers" && ctx.permissions.includes("manage_customers"));
+
+  if (!hasPerm) {
+    throw new ForbiddenError(`Missing required permission: ${permission}`);
+  }
+
+  return ctx;
+}
+
+/**
+ * Ensures requesting user is an active admin with target permission.
+ * Redirects to /admin/login or /admin/forbidden on failure.
+ * Suitable for Page Server Components.
+ */
+export async function requirePermissionPage(permission: string): Promise<AdminContext> {
   const ctx = await getCurrentAdminContext();
   if (!ctx) {
     redirect("/admin/login");

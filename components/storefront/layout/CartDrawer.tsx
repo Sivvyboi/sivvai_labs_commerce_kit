@@ -160,7 +160,9 @@ export function CartDrawer() {
 
                 // Find primary image if available
                 const imageUrl =
-                  line.variant?.image_id ? null : null; // Variant image or product image
+                  product?.images?.find((img) => img.is_primary)?.url ??
+                  product?.images?.[0]?.url ??
+                  null;
 
                 return (
                   <div
@@ -209,7 +211,7 @@ export function CartDrawer() {
 
                       {/* Price & Quantity Controls */}
                       <div className="flex items-center justify-between pt-2">
-                        <Price amount={Number(unitPrice)} size="sm" />
+                        <Price amount={Number(unitPrice) / 100} size="sm" />
                         <QuantitySelector
                           value={line.quantity}
                           min={1}

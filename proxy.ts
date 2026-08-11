@@ -14,10 +14,23 @@
 
 import { type NextRequest, NextResponse } from "next/server";
 import { updateSession } from "@/lib/supabase/proxy";
+import { CART_COOKIE_NAME } from "@/lib/auth/cart-token";
 
 export async function proxy(request: NextRequest): Promise<NextResponse> {
   const { response, user } = await updateSession(request);
   const pathname = request.nextUrl.pathname;
+
+  // Initialize guest cart_token cookie if absent
+  if (!request.cookies.get(CART_COOKIE_NAME)?.value) {
+    const newToken = crypto.randomUUID();
+    response.cookies.set(CART_COOKIE_NAME, newToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 30, // 30 days
+    });
+  }
 
   const isAdminAuthRoute =
     pathname === "/admin/login" ||

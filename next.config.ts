@@ -2,18 +2,31 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   // ---------------------------------------------------------------------------
+  // Development: allow access from local network (e.g. 192.168.x.x)
+  // Suppresses the "allowedDevOrigins" warning when testing on a phone/tablet.
+  // ---------------------------------------------------------------------------
+  allowedDevOrigins: [
+    "localhost",
+    "127.0.0.1",
+    "192.168.18.2",
+  ],
+
+  // ---------------------------------------------------------------------------
   // Images
   // Allowlist domains for next/image. Add your CDN / Supabase storage bucket
   // hostname here. Example: images.supabase.co
   // ---------------------------------------------------------------------------
   images: {
     remotePatterns: [
-      // Supabase Storage (add your project ref subdomain when ready)
-      // {
-      //   protocol: "https",
-      //   hostname: "<project-ref>.supabase.co",
-      //   pathname: "/storage/v1/object/public/**",
-      // },
+      {
+        protocol: "https",
+        hostname: "*.supabase.co",
+        pathname: "/storage/v1/object/public/**",
+      },
+      {
+        protocol: "https",
+        hostname: "images.unsplash.com",
+      },
     ],
   },
 

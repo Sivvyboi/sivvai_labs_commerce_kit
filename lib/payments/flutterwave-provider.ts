@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import type {
   PaymentProvider,
   InitializePaymentParams,
@@ -74,9 +75,19 @@ export class FlutterwaveProvider implements PaymentProvider {
     };
   }
 
-  verifyWebhookSignature(_payload: string | Record<string, unknown>, signature: string): boolean {
-    const secretHash = process.env.FLUTTERWAVE_WEBHOOK_SECRET;
-    if (!secretHash) return true;
-    return signature === secretHash;
+  verifyWebhookSignature(_rawPayload: string, signature: string): boolean {
+    const webhookSecret = process.env.FLUTTERWAVE_WEBHOOK_SECRET || this.secretKey;
+    if (!webhookSecret || !signature) {
+      return false;
+    }
+
+    try {
+      return crypto.timingSafeEqual(
+        Buffer.from(signature, "utf-8"),
+        Buffer.from(webhookSecret, "utf-8")
+      );
+    } catch {
+      return false;
+    }
   }
 }

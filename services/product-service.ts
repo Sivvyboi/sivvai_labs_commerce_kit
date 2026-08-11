@@ -29,12 +29,53 @@ export async function getProductById(id: string) {
 
 /** Returns all products for admin (any status) with full details */
 export async function getAllProducts(params: productRepo.FindProductsParams = {}) {
-  // Override status to undefined so we get all statuses
   return productRepo.findProducts({ ...params, status: params.status });
 }
 
-export async function createProductAdmin(data: ProductInsert) {
-  return productRepo.createProduct(data);
+/**
+ * Creates a complete product record in Supabase:
+ *  1. Base product record in `products`.
+ *  2. Default variant in `product_variants` (is_default: true, status: 'active').
+ *  3. Associated `inventory_records` entry (on_hand_quantity: initialStock).
+ */
+export async function createProductAdmin(
+  data: ProductInsert,
+  initialStock = 0,
+  sku?: string
+) {
+  const product = await productRepo.createProduct(data);
+  const supabase = createAdminClient();
+
+  const defaultSku =
+    sku && sku.trim()
+      ? sku.trim().toUpperCase()
+      : `${product.slug.toUpperCase().slice(0, 10)}-DEFAULT`;
+
+  // Create default variant
+  const { data: defaultVariant, error: varErr } = await supabase
+    .from("product_variants")
+    .insert({
+      product_id: product.id,
+      sku: defaultSku,
+      is_default: true,
+      status: "active",
+      option_combination: {},
+    })
+    .select()
+    .single();
+
+  if (!varErr && defaultVariant) {
+    // Create inventory record for the default variant
+    await supabase.from("inventory_records").insert({
+      variant_id: defaultVariant.id,
+      on_hand_quantity: Math.max(0, initialStock),
+      reserved_quantity: 0,
+      low_stock_threshold: 5,
+      track_inventory: true,
+    });
+  }
+
+  return product;
 }
 
 export async function updateProductAdmin(id: string, data: ProductUpdate) {
@@ -48,8 +89,21 @@ export async function publishProduct(id: string) {
   });
 }
 
+export async function unpublishProduct(id: string) {
+  return productRepo.updateProduct(id, {
+    status: "draft",
+  });
+}
+
 export async function archiveProductAdmin(id: string) {
   return productRepo.archiveProduct(id);
+}
+
+export async function restoreProduct(id: string) {
+  return productRepo.updateProduct(id, {
+    status: "draft",
+    archived_at: null,
+  });
 }
 
 export async function duplicateProduct(id: string) {
@@ -59,20 +113,23 @@ export async function duplicateProduct(id: string) {
   const timestamp = Date.now();
   const newSlug = `${original.slug}-copy-${timestamp}`;
 
-  const duplicate = await productRepo.createProduct({
-    name: `COPY OF ${original.name}`,
-    slug: newSlug,
-    description: original.description,
-    category_id: original.category_id,
-    status: "draft",
-    base_price: original.base_price,
-    sale_price: original.sale_price,
-    compare_at_price: original.compare_at_price,
-    cost_price: original.cost_price,
-    is_featured: false,
-    seo_title: original.seo_title,
-    seo_description: original.seo_description,
-  });
+  const duplicate = await createProductAdmin(
+    {
+      name: `COPY OF ${original.name}`,
+      slug: newSlug,
+      description: original.description,
+      category_id: original.category_id,
+      status: "draft",
+      base_price: original.base_price,
+      sale_price: original.sale_price,
+      compare_at_price: original.compare_at_price,
+      cost_price: original.cost_price,
+      is_featured: false,
+      seo_title: original.seo_title,
+      seo_description: original.seo_description,
+    },
+    0
+  );
 
   return duplicate;
 }
@@ -122,5 +179,53 @@ export async function addProductImage(
 export async function removeProductImage(imageId: string) {
   const supabase = createAdminClient();
   const { error } = await supabase.from("product_images").delete().eq("id", imageId);
+  if (error) throw error;
+}
+
+/** Creates an option group for a product (e.g. Size, Color) */
+export async function createOptionGroup(productId: string, name: string) {
+  const supabase = createAdminClient();
+  const { data, error } = await supabase
+    .from("option_groups")
+    .insert({
+      product_id: productId,
+      name,
+      display_order: 0,
+    })
+    .select()
+    .single();
+
+  if (error || !data) throw error || new Error("Failed to create option group");
+  return data;
+}
+
+/** Deletes an option group by ID */
+export async function deleteOptionGroup(groupId: string) {
+  const supabase = createAdminClient();
+  const { error } = await supabase.from("option_groups").delete().eq("id", groupId);
+  if (error) throw error;
+}
+
+/** Adds an option value to an option group (e.g. Small, Red) */
+export async function addOptionValue(optionGroupId: string, label: string) {
+  const supabase = createAdminClient();
+  const { data, error } = await supabase
+    .from("option_values")
+    .insert({
+      option_group_id: optionGroupId,
+      label,
+      display_order: 0,
+    })
+    .select()
+    .single();
+
+  if (error || !data) throw error || new Error("Failed to add option value");
+  return data;
+}
+
+/** Deletes an option value by ID */
+export async function deleteOptionValue(valueId: string) {
+  const supabase = createAdminClient();
+  const { error } = await supabase.from("option_values").delete().eq("id", valueId);
   if (error) throw error;
 }

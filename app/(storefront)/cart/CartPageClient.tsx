@@ -9,6 +9,7 @@
  */
 
 import Link from "next/link";
+import Image from "next/image";
 import { useCart } from "@/features/storefront/hooks/useCart";
 import { Price } from "@/components/shared/Price";
 import { QuantitySelector } from "@/components/storefront/product/QuantitySelector";
@@ -52,6 +53,10 @@ export function CartPageClient() {
           {items.map((line) => {
             const product = line.variant?.product;
             const productName = product?.name ?? "Product Item";
+            const imageUrl =
+              product?.images?.find((img) => img.is_primary)?.url ??
+              product?.images?.[0]?.url ??
+              null;
             const unitPrice =
               line.unit_price_snapshot ??
               line.variant?.price_override ??
@@ -61,15 +66,25 @@ export function CartPageClient() {
             return (
               <div key={line.id} className="py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div className="flex items-center gap-3">
-                  <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-[var(--kit-surface)] border border-[var(--kit-border)] text-[var(--kit-muted-fg)] shrink-0">
-                    <ShoppingBag className="h-6 w-6 opacity-40" />
+                  <div className="relative flex h-16 w-16 items-center justify-center rounded-xl bg-[var(--kit-surface)] border border-[var(--kit-border)] overflow-hidden shrink-0">
+                    {imageUrl ? (
+                      <Image
+                        src={imageUrl}
+                        alt={productName}
+                        fill
+                        sizes="64px"
+                        className="object-cover"
+                      />
+                    ) : (
+                      <ShoppingBag className="h-6 w-6 text-[var(--kit-muted-fg)] opacity-40" />
+                    )}
                   </div>
                   <div className="min-w-0">
                     <h3 className="text-sm font-semibold text-[var(--kit-text-primary)] truncate">
                       {productName}
                     </h3>
                     <p className="text-xs text-[var(--kit-muted-fg)]">
-                      Unit: <Price amount={Number(unitPrice)} size="sm" />
+                      Unit: <Price amount={Number(unitPrice) / 100} size="sm" />
                     </p>
                   </div>
                 </div>
@@ -84,7 +99,7 @@ export function CartPageClient() {
                   />
 
                   <div className="text-right min-w-[70px]">
-                    <Price amount={Number(unitPrice) * line.quantity} size="sm" />
+                    <Price amount={(Number(unitPrice) / 100) * line.quantity} size="sm" />
                   </div>
 
                   <button

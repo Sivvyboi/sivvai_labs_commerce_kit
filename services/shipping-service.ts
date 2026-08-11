@@ -13,9 +13,20 @@ export async function getFulfilmentMethod(methodId: string) {
   return method;
 }
 
-export async function calculateShippingRate(methodId: string, subtotal: number): Promise<number> {
-  const rates = await shippingRepo.findShippingRatesByZone(methodId);
-  const rate = rates[0];
+export async function calculateShippingRate(
+  methodId: string,
+  subtotal: number,
+  destinationState?: string
+): Promise<number> {
+  const zone = await shippingRepo.findMatchingShippingZone(destinationState);
+  if (!zone) return 0;
+
+  let rate = await shippingRepo.findShippingRateForMethodAndZone(methodId, zone.id);
+  if (!rate) {
+    const rates = await shippingRepo.findShippingRatesByZone(zone.id);
+    rate = rates[0] ?? null;
+  }
+
   if (!rate) return 0;
 
   if (rate.free_above_order_total !== null && subtotal >= rate.free_above_order_total) {

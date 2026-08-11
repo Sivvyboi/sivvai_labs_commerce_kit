@@ -44,22 +44,22 @@ async function verifyAdminPassword(email: string, password: string): Promise<boo
  */
 async function countActiveOwners(): Promise<number> {
   const adminSupabase = createAdminClient();
-  const { data: owners } = await adminSupabase
+
+  const { data: ownerRole } = await adminSupabase
     .from("roles")
     .select("id")
     .eq("key", "owner")
     .single();
 
-  if (!owners) return 0;
+  if (!ownerRole) return 0;
 
-  const { count, error } = await adminSupabase
+  const { count } = await adminSupabase
     .from("admin_users")
     .select("id", { count: "exact", head: true })
-    .eq("role_id", owners.id)
+    .eq("role_id", ownerRole.id)
     .eq("is_active", true);
 
-  if (error) return 0;
-  return count || 0;
+  return count ?? 0;
 }
 
 export async function listAdminUsersAction() {

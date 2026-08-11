@@ -87,7 +87,7 @@ export function OrderSummary({
                 </div>
 
                 <div className="text-right text-xs font-bold text-[var(--kit-text-primary)]">
-                  <Price amount={item.unit_price_snapshot * item.quantity} size="sm" />
+                  <Price amount={(item.unit_price_snapshot / 100) * item.quantity} size="sm" />
                 </div>
               </div>
             );

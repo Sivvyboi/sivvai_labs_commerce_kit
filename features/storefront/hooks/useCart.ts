@@ -47,14 +47,12 @@ export function useCart() {
     async (params: {
       variantId: string;
       quantity?: number;
-      unitPriceSnapshot?: number;
     }) => {
       setLoading(true);
       try {
         const res = await addToCartAction({
           variantId: params.variantId,
           quantity: params.quantity ?? 1,
-          unitPriceSnapshot: params.unitPriceSnapshot,
         });
 
         if (res.cart) {

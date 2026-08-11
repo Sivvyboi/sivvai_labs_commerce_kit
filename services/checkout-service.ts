@@ -42,7 +42,8 @@ export async function initiateCheckout(input: InitiateCheckoutInput) {
   if (input.shippingMethodId) {
     shippingTotal = await shippingService.calculateShippingRate(
       input.shippingMethodId,
-      cart.subtotal
+      cart.subtotal,
+      input.shippingAddress?.state
     );
   }
 

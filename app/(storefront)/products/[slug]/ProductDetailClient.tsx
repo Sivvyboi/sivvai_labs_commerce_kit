@@ -77,7 +77,6 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
       await addItem({
         variantId: selectedVariant.id,
         quantity,
-        unitPriceSnapshot: Number(activePrice),
       });
     } finally {
       setIsAdding(false);
@@ -102,7 +101,6 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
       await addItem({
         variantId: selectedVariant.id,
         quantity,
-        unitPriceSnapshot: Number(activePrice),
       });
       router.push(ROUTES.checkout);
     } finally {
@@ -158,8 +156,8 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
         {/* Price Display */}
         <div className="flex items-baseline gap-3 pb-4 border-b border-[var(--kit-border)]">
           <Price
-            amount={Number(activePrice)}
-            originalAmount={comparePrice ? Number(comparePrice) : undefined}
+            amount={Number(activePrice) / 100}
+            originalAmount={comparePrice ? Number(comparePrice) / 100 : undefined}
             size="lg"
           />
         </div>
