@@ -1,5 +1,5 @@
 import "server-only";
-import { createClient } from "../supabase/server";
+import { createClient, createPublicClient } from "../supabase/server";
 import type { Database } from "@/types";
 import type { CategoryRow } from "./categories";
 
@@ -66,7 +66,7 @@ const PRODUCT_COLUMNS = `
 export async function findProducts(
   params: FindProductsParams = {}
 ): Promise<{ data: ProductWithDetails[]; count: number }> {
-  const supabase = await createClient();
+  const supabase = createPublicClient();
 
   let categoryId: string | undefined;
   if (params.categorySlug) {
@@ -160,7 +160,7 @@ export async function findProducts(
 }
 
 export async function findProductById(id: string): Promise<ProductWithDetails | null> {
-  const supabase = await createClient();
+  const supabase = createPublicClient();
   const { data, error } = await supabase
     .from("products")
     .select(PRODUCT_COLUMNS)
@@ -172,7 +172,7 @@ export async function findProductById(id: string): Promise<ProductWithDetails | 
 }
 
 export async function findProductBySlug(slug: string): Promise<ProductWithDetails | null> {
-  const supabase = await createClient();
+  const supabase = createPublicClient();
   const { data, error } = await supabase
     .from("products")
     .select(PRODUCT_COLUMNS)

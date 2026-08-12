@@ -20,15 +20,31 @@
 
 import "server-only";
 
-// ---------------------------------------------------------------------------
-// Placeholder — replace with real implementation once @supabase/ssr is installed
-// ---------------------------------------------------------------------------
-
+import { createClient as _createSupabaseClient } from "@supabase/supabase-js";
 import { createServerClient as _createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import type { Database } from "@/types";
 
 import { CART_COOKIE_NAME, hashCartToken } from "../auth/cart-token";
+
+/**
+ * Creates a public, stateless Supabase client for reading public catalog & store data
+ * (products, categories, store settings, shipping methods).
+ * Does NOT invoke cookies() or headers(), so it is 100% safe for static generation,
+ * generateStaticParams, generateMetadata, and ISR routes without DYNAMIC_SERVER_USAGE errors.
+ */
+export function createPublicClient() {
+  return _createSupabaseClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+      },
+    }
+  );
+}
 
 /**
  * Creates a Supabase client configured for the server environment.
@@ -67,4 +83,5 @@ export async function createServerClient() {
 }
 
 export const createClient = createServerClient;
+
 

@@ -1,5 +1,5 @@
 import "server-only";
-import { createClient } from "../supabase/server";
+import { createClient, createPublicClient } from "../supabase/server";
 import { createAdminClient } from "../supabase/admin";
 import type { Database } from "@/types";
 
@@ -12,7 +12,7 @@ export type BrandProfileRow = Database["public"]["Tables"]["brand_profile"]["Row
 export type FeatureFlagRow = Database["public"]["Tables"]["feature_flags"]["Row"];
 
 export async function getStoreSettings(): Promise<StoreSettingsRow | null> {
-  const supabase = await createClient();
+  const supabase = createPublicClient();
   const { data, error } = await supabase
     .from("store_settings")
     .select("*")
@@ -24,7 +24,7 @@ export async function getStoreSettings(): Promise<StoreSettingsRow | null> {
 }
 
 export async function getBrandProfile(): Promise<BrandProfileRow | null> {
-  const supabase = await createClient();
+  const supabase = createPublicClient();
   const { data, error } = await supabase
     .from("brand_profile")
     .select("*")
@@ -36,7 +36,7 @@ export async function getBrandProfile(): Promise<BrandProfileRow | null> {
 }
 
 export async function getFeatureFlags(): Promise<FeatureFlagRow[]> {
-  const supabase = await createClient();
+  const supabase = createPublicClient();
   const { data, error } = await supabase
     .from("feature_flags")
     .select("*");

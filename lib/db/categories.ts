@@ -1,5 +1,5 @@
 import "server-only";
-import { createClient } from "../supabase/server";
+import { createClient, createPublicClient } from "../supabase/server";
 import { createAdminClient } from "../supabase/admin";
 import type { Database } from "@/types";
 
@@ -10,7 +10,7 @@ export type CategoryUpdate = Database["public"]["Tables"]["categories"]["Update"
 export type CategoryRow = Database["public"]["Tables"]["categories"]["Row"];
 
 export async function findCategories(): Promise<CategoryRow[]> {
-  const supabase = await createClient();
+  const supabase = createPublicClient();
   const { data, error } = await supabase
     .from("categories")
     .select("*")
@@ -22,7 +22,7 @@ export async function findCategories(): Promise<CategoryRow[]> {
 }
 
 export async function findCategoryById(id: string): Promise<CategoryRow | null> {
-  const supabase = await createClient();
+  const supabase = createPublicClient();
   const { data, error } = await supabase
     .from("categories")
     .select("*")
@@ -34,7 +34,7 @@ export async function findCategoryById(id: string): Promise<CategoryRow | null> 
 }
 
 export async function findCategoryBySlug(slug: string): Promise<CategoryRow | null> {
-  const supabase = await createClient();
+  const supabase = createPublicClient();
   const { data, error } = await supabase
     .from("categories")
     .select("*")

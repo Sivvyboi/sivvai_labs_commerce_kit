@@ -1,5 +1,5 @@
 import "server-only";
-import { createClient } from "../supabase/server";
+import { createClient, createPublicClient } from "../supabase/server";
 import type { Database } from "@/types";
 
 export type ShippingZoneRow = Database["public"]["Tables"]["shipping_zones"]["Row"];
@@ -9,7 +9,7 @@ export type FulfilmentMethodRow = Database["public"]["Tables"]["fulfilment_metho
 export type ShippingZoneWithRates = ShippingZoneRow & { rates: ShippingRateRow[] };
 
 export async function findShippingZones(): Promise<ShippingZoneWithRates[]> {
-  const supabase = await createClient();
+  const supabase = createPublicClient();
   const { data, error } = await supabase
     .from("shipping_zones")
     .select("*, rates:shipping_rates(*)")
@@ -20,7 +20,7 @@ export async function findShippingZones(): Promise<ShippingZoneWithRates[]> {
 }
 
 export async function findFulfilmentMethods(): Promise<FulfilmentMethodRow[]> {
-  const supabase = await createClient();
+  const supabase = createPublicClient();
   const { data, error } = await supabase
     .from("fulfilment_methods")
     .select("*")
@@ -31,7 +31,7 @@ export async function findFulfilmentMethods(): Promise<FulfilmentMethodRow[]> {
 }
 
 export async function findFulfilmentMethodById(id: string): Promise<FulfilmentMethodRow | null> {
-  const supabase = await createClient();
+  const supabase = createPublicClient();
   const { data, error } = await supabase
     .from("fulfilment_methods")
     .select("*")
@@ -43,7 +43,7 @@ export async function findFulfilmentMethodById(id: string): Promise<FulfilmentMe
 }
 
 export async function findShippingRatesByZone(zoneId: string): Promise<ShippingRateRow[]> {
-  const supabase = await createClient();
+  const supabase = createPublicClient();
   const { data, error } = await supabase
     .from("shipping_rates")
     .select("*")
@@ -54,7 +54,7 @@ export async function findShippingRatesByZone(zoneId: string): Promise<ShippingR
 }
 
 export async function findMatchingShippingZone(state?: string): Promise<ShippingZoneRow | null> {
-  const supabase = await createClient();
+  const supabase = createPublicClient();
   const { data: zones, error } = await supabase
     .from("shipping_zones")
     .select("*");
@@ -74,7 +74,7 @@ export async function findShippingRateForMethodAndZone(
   fulfilmentMethodId: string,
   zoneId: string
 ): Promise<ShippingRateRow | null> {
-  const supabase = await createClient();
+  const supabase = createPublicClient();
   const { data, error } = await supabase
     .from("shipping_rates")
     .select("*")
