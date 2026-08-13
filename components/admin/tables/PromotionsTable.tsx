@@ -12,7 +12,10 @@ import { Trash2, Tag } from "lucide-react";
 import { clsx } from "clsx";
 
 import { useAdmin } from "@/features/admin/hooks/useAdmin";
-import { togglePromotionActiveAction, deletePromotionAction } from "@/features/admin/actions/admin.actions";
+import {
+  togglePromotionActiveAction,
+  deletePromotionAction,
+} from "@/features/admin/actions/promotion.actions";
 import { StatusBadge } from "@/components/admin/ui/StatusBadge";
 import { ConfirmDialog } from "@/components/admin/ui/ConfirmDialog";
 import type { PromotionWithCoupon } from "@/lib/db/promotions";

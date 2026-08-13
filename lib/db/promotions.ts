@@ -24,7 +24,7 @@ export async function findCouponByCode(code: string): Promise<CouponCodeWithProm
     .maybeSingle();
 
   if (error || !data) return null;
-  return data as CouponCodeWithPromotion;
+  return (data as unknown) as CouponCodeWithPromotion;
 }
 
 export async function incrementCouponUsage(couponId: string): Promise<CouponCodeRow> {
@@ -64,7 +64,7 @@ export async function findAllPromotions(): Promise<PromotionWithCoupon[]> {
     .order("created_at", { ascending: false });
 
   if (error) throw error;
-  return (data ?? []) as PromotionWithCoupon[];
+  return ((data ?? []) as unknown) as PromotionWithCoupon[];
 }
 
 export async function createPromotionWithCoupon(

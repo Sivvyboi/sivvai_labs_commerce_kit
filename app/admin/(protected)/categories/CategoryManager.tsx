@@ -16,7 +16,8 @@ import {
   updateCategoryAction,
   archiveCategoryAction,
   restoreCategoryAction,
-} from "@/features/admin/actions/admin.actions";
+} from "@/features/admin/actions/category.actions";
+
 import { StatusBadge } from "@/components/admin/ui/StatusBadge";
 import type { CategoryRow } from "@/lib/db/categories";
 

@@ -14,7 +14,8 @@ import { ArrowLeft, Plus } from "lucide-react";
 import { clsx } from "clsx";
 
 import { useAdmin } from "@/features/admin/hooks/useAdmin";
-import { createProductAction } from "@/features/admin/actions/admin.actions";
+import { createProductAction } from "@/features/admin/actions/product.actions";
+
 import { useCurrency } from "@/components/shared/CurrencyProvider";
 import type { CategoryRow } from "@/lib/db/categories";
 

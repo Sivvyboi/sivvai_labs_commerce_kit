@@ -1,6 +1,8 @@
 import * as paymentRepo from "@/lib/db/payments";
 import * as checkoutRepo from "@/lib/db/checkout";
+import * as customerRepo from "@/lib/db/customers";
 import * as storeRepo from "@/lib/db/store";
+import * as cartService from "./cart-service";
 import * as orderService from "./order-service";
 import { getPaymentProvider } from "@/lib/payments";
 import {
@@ -21,7 +23,21 @@ export async function initiatePayment(params: {
     throw new NotFoundError("CheckoutSession", params.checkoutSessionId);
   }
 
-  // 2. Resolve active provider
+  // 2. Resolve customer email
+  let customerEmail = "customer@store.com";
+  if (session.customer_id) {
+    const customer = await customerRepo.findCustomerById(session.customer_id);
+    if (customer?.email) customerEmail = customer.email;
+  } else if (session.guest_contact && typeof session.guest_contact === "object") {
+    const contact = session.guest_contact as Record<string, unknown>;
+    if (typeof contact.email === "string") customerEmail = contact.email;
+  }
+
+  // 3. Resolve checkout total amount (major currency units)
+  const cart = await cartService.getCart(session.cart_id);
+  const totalAmountMajor = cart.subtotal / 100;
+
+  // 4. Resolve active provider
   let providerKey = params.providerName;
   if (!providerKey) {
     const storeSettings = await storeRepo.getStoreSettings();
@@ -30,28 +46,28 @@ export async function initiatePayment(params: {
 
   const provider = getPaymentProvider(providerKey);
 
-  // 3. Generate a unique idempotency key & external reference
+  // 5. Generate a unique idempotency key & external reference
   const idempotencyKey = `${params.checkoutSessionId}-${Date.now()}`;
   const reference = `REF-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
 
-  // 4. Initialize transaction via provider abstraction
+  // 6. Initialize transaction via provider abstraction
   const initResult = await provider.initializePayment({
-    amount: 0,
+    amount: totalAmountMajor,
     currency: "NGN",
-    email: "customer@store.com",
+    email: customerEmail,
     reference,
     callbackUrl: params.callbackUrl,
     metadata: { checkoutSessionId: session.id },
   });
 
-  // 5. Record payment attempt
+  // 7. Record payment attempt
   const attempt = await paymentRepo.createPaymentAttempt({
     order_id: null,
     attempt_number: 1,
     provider: provider.name,
     idempotency_key: idempotencyKey,
     provider_reference: reference,
-    amount: 0,
+    amount: Math.round(totalAmountMajor * 100),
     currency: "NGN",
     status: "pending",
     confirmed_at: null,

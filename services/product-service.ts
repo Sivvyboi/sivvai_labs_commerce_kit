@@ -1,4 +1,5 @@
 import * as productRepo from "@/lib/db/products";
+import { findProductByIdAdmin, findProductsAdmin } from "@/lib/db/products";
 import { NotFoundError } from "@/lib/errors";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { ProductInsert, ProductUpdate } from "@/lib/db/products";
@@ -16,7 +17,9 @@ export async function getProductBySlug(slug: string) {
 }
 
 export async function getProductById(id: string) {
-  const product = await productRepo.findProductById(id);
+  // Use the admin-scoped lookup so draft/archived products are visible
+  // to authenticated admin users (RLS still enforced via their JWT).
+  const product = await findProductByIdAdmin(id);
   if (!product) {
     throw new NotFoundError("Product", id);
   }
@@ -29,7 +32,8 @@ export async function getProductById(id: string) {
 
 /** Returns all products for admin (any status) with full details */
 export async function getAllProducts(params: productRepo.FindProductsParams = {}) {
-  return productRepo.findProducts({ ...params, status: params.status });
+  // Use session-aware client so RLS sees the admin JWT and returns draft/archived products.
+  return findProductsAdmin({ ...params, status: params.status });
 }
 
 /**
@@ -107,7 +111,8 @@ export async function restoreProduct(id: string) {
 }
 
 export async function duplicateProduct(id: string) {
-  const original = await productRepo.findProductById(id);
+  // Also use admin lookup so drafts/archived products can be duplicated.
+  const original = await findProductByIdAdmin(id);
   if (!original) throw new NotFoundError("Product", id);
 
   const timestamp = Date.now();

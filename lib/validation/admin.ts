@@ -38,11 +38,28 @@ export const CreateProductAdminSchema = z.object({
 
 export type CreateProductAdminInput = z.infer<typeof CreateProductAdminSchema>;
 
-export const UpdateProductAdminSchema = CreateProductAdminSchema.partial().extend({
+export const UpdateProductMetadataSchema = z.object({
   id: z.string().uuid(),
+  name: z.string().min(1, "Product name is required").optional(),
+  slug: z.string().min(1, "Slug is required").regex(/^[a-z0-9-]+$/, "Slug must be lowercase letters, numbers and hyphens only").optional(),
+  description: z.string().optional().nullable(),
+  category_id: z.preprocess(
+    (val) => (val === "" ? null : val),
+    z.string().uuid("Invalid category").optional().nullable()
+  ),
+  base_price: z.coerce.number().min(0, "Price must be 0 or greater").optional(),
+  sale_price: z.coerce.number().min(0).optional().nullable(),
+  compare_at_price: z.coerce.number().min(0).optional().nullable(),
+  cost_price: z.coerce.number().min(0).optional().nullable(),
+  is_featured: z.boolean().optional(),
+  seo_title: z.string().max(70).optional().nullable(),
+  seo_description: z.string().max(160).optional().nullable(),
 });
 
-export type UpdateProductAdminInput = z.infer<typeof UpdateProductAdminSchema>;
+export type UpdateProductMetadataInput = z.infer<typeof UpdateProductMetadataSchema>;
+
+export const UpdateProductAdminSchema = UpdateProductMetadataSchema;
+export type UpdateProductAdminInput = UpdateProductMetadataInput;
 
 // ---------------------------------------------------------------------------
 // Option Groups & Values

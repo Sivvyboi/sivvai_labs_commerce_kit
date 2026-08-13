@@ -12,7 +12,8 @@ import { Edit2, AlertTriangle, CheckCircle, Package } from "lucide-react";
 import { clsx } from "clsx";
 
 import { useAdmin } from "@/features/admin/hooks/useAdmin";
-import { updateInventoryAction } from "@/features/admin/actions/admin.actions";
+import { updateInventoryAction } from "@/features/admin/actions/inventory.actions";
+
 import type { InventoryWithVariant } from "@/lib/db/inventory";
 
 interface InventoryTableProps {

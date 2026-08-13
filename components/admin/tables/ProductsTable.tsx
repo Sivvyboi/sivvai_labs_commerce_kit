@@ -21,7 +21,8 @@ import {
   unpublishProductAction,
   duplicateProductAction,
   restoreProductAction,
-} from "@/features/admin/actions/admin.actions";
+} from "@/features/admin/actions/product.actions";
+
 import type { ProductWithDetails } from "@/lib/db/products";
 
 interface ProductsTableProps {
@@ -33,7 +34,7 @@ function formatPrice(kobo: number): string {
 }
 
 export function ProductsTable({ products }: ProductsTableProps) {
-  const { execute, loading } = useAdmin();
+  const { execute, loading, error, clearError } = useAdmin();
   const [archiveTarget, setArchiveTarget] = React.useState<string | null>(null);
 
   async function handleArchiveConfirm() {
@@ -59,7 +60,19 @@ export function ProductsTable({ products }: ProductsTableProps) {
   }
 
   return (
-    <>
+    <div className="space-y-4">
+      {error && (
+        <div className="flex items-center justify-between rounded-[var(--kit-radius-md)] border border-[var(--kit-danger)]/20 bg-[var(--kit-danger)]/10 p-3.5 text-xs text-[var(--kit-danger)] font-medium">
+          <span>{error}</span>
+          <button
+            type="button"
+            onClick={clearError}
+            className="text-[var(--kit-danger)] hover:underline ml-2"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
       <div className="overflow-x-auto rounded-[var(--kit-radius-lg)] border border-[var(--kit-border)] bg-[var(--kit-card)] shadow-[var(--kit-shadow-sm)]">
         <table className="w-full text-sm">
           <thead>
@@ -238,6 +251,6 @@ export function ProductsTable({ products }: ProductsTableProps) {
         variant="danger"
         loading={loading}
       />
-    </>
+    </div>
   );
 }

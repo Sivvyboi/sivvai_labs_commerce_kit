@@ -36,7 +36,8 @@ export function useAdmin(): UseAdminReturn {
 
   const execute: UseAdminReturn["execute"] = React.useCallback(
     async (action, options = {}) => {
-      const { onSuccess, refresh = true } = options;
+      const { onSuccess, refresh = false } = options;
+
       setLoading(true);
       setError(null);
 

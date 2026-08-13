@@ -11,7 +11,8 @@ import { Plus } from "lucide-react";
 import { clsx } from "clsx";
 
 import { useAdmin } from "@/features/admin/hooks/useAdmin";
-import { createPromotionAction } from "@/features/admin/actions/admin.actions";
+import { createPromotionAction } from "@/features/admin/actions/promotion.actions";
+
 import { PromotionsTable } from "@/components/admin/tables/PromotionsTable";
 import type { PromotionWithCoupon } from "@/lib/db/promotions";
 

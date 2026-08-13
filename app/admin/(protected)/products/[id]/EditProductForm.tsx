@@ -37,7 +37,8 @@ import {
   deleteOptionValueAction,
   restoreProductAction,
   generateProductImageUploadUrlAction,
-} from "@/features/admin/actions/admin.actions";
+} from "@/features/admin/actions/product.actions";
+
 import { ConfirmDialog } from "@/components/admin/ui/ConfirmDialog";
 import { StatusBadge } from "@/components/admin/ui/StatusBadge";
 import { AnimatedFeedbackOverlay, type FeedbackStatus } from "@/components/admin/ui/AnimatedFeedbackOverlay";
@@ -94,9 +95,66 @@ export function EditProductForm({ product, categories }: EditProductFormProps) {
     onRetry?: () => void;
   }>({ status: "idle" });
 
-  // Save draft modal handler — saves field updates and sets status to draft (mirroring publish flow)
+  // Save Changes handler — saves metadata updates without changing status or unpublishing
+  async function handleSaveChanges(e?: React.FormEvent) {
+    if (e) e.preventDefault();
+
+    setFeedback({
+      status: "loading",
+      title: "Saving Product Changes…",
+      message: "Writing metadata updates to database",
+    });
+
+    const basePriceKobo = Math.round((Number(price) || 0) * 100);
+    const salePriceKobo = salePrice ? Math.round(Number(salePrice) * 100) : null;
+    const costPriceKobo = costPrice ? Math.round(Number(costPrice) * 100) : null;
+
+    const updateRes = await execute(
+      () =>
+        updateProductAction({
+          id: product.id,
+          name,
+          slug,
+          description: description || undefined,
+          category_id: categoryId || null,
+          base_price: basePriceKobo,
+          sale_price: salePriceKobo,
+          cost_price: costPriceKobo,
+          is_featured: isFeatured,
+          seo_title: seoTitle || null,
+          seo_description: seoDescription || null,
+        }),
+      { refresh: true }
+    );
+
+    if (updateRes?.success) {
+      setFeedback({
+        status: "success",
+        title: "Changes Saved!",
+        message: "Product metadata has been successfully updated.",
+      });
+    } else {
+      setFeedback({
+        status: "error",
+        title: "Save Failed",
+        message: "Could not save product details.",
+        errorDetails: updateRes?.error ?? error ?? "Failed to save product fields",
+        onRetry: () => handleSaveChanges(),
+      });
+    }
+  }
+
+  // Save draft modal handler — saves field updates and sets status to draft (warns if product is published)
   async function handleSaveAsDraftModal() {
     setIsPublishModalOpen(false);
+
+    if (status === "published") {
+      const confirmUnpublish = window.confirm(
+        "This product is currently published. Saving as draft will unpublish it from the storefront catalog. Do you want to continue?"
+      );
+      if (!confirmUnpublish) return;
+    }
+
     setFeedback({
       status: "loading",
       title: "Saving Product Draft…",
@@ -107,40 +165,29 @@ export function EditProductForm({ product, categories }: EditProductFormProps) {
     const salePriceKobo = salePrice ? Math.round(Number(salePrice) * 100) : null;
     const costPriceKobo = costPrice ? Math.round(Number(costPrice) * 100) : null;
 
-    // 1. Update form field values first
-    const updateRes = await execute(() =>
-      updateProductAction({
-        id: product.id,
-        name,
-        slug,
-        description: description || undefined,
-        category_id: categoryId || null,
-        status: "draft",
-        base_price: basePriceKobo,
-        sale_price: salePriceKobo,
-        cost_price: costPriceKobo,
-        is_featured: isFeatured,
-        seo_title: seoTitle || null,
-        seo_description: seoDescription || null,
-      })
+    const updateRes = await execute(
+      () =>
+        updateProductAction({
+          id: product.id,
+          name,
+          slug,
+          description: description || undefined,
+          category_id: categoryId || null,
+          base_price: basePriceKobo,
+          sale_price: salePriceKobo,
+          cost_price: costPriceKobo,
+          is_featured: isFeatured,
+          seo_title: seoTitle || null,
+          seo_description: seoDescription || null,
+        }),
+      { refresh: true }
     );
 
-    if (updateRes && !updateRes.success) {
-      setFeedback({
-        status: "error",
-        title: "Save Draft Failed",
-        message: "Could not save product details in Supabase.",
-        errorDetails: updateRes.error ?? error ?? "Failed to save product fields",
-        onRetry: handleSaveAsDraftModal,
-      });
-      return;
-    }
-
-    // 2. Ensure status is set to draft in DB & catalog cache revalidated
-    const statusRes = await execute(() => unpublishProductAction(product.id));
-
-    if (statusRes?.success || updateRes?.success) {
-      setStatus("draft");
+    if (updateRes?.success) {
+      if (status === "published") {
+        await unpublishProductAction(product.id);
+        setStatus("draft");
+      }
       setFeedback({
         status: "success",
         title: "Saved as Draft!",
@@ -150,12 +197,13 @@ export function EditProductForm({ product, categories }: EditProductFormProps) {
       setFeedback({
         status: "error",
         title: "Save Draft Failed",
-        message: "Could not set product status to draft in Supabase.",
-        errorDetails: statusRes?.error ?? error ?? "Unknown database error",
+        message: "Could not save product details in Supabase.",
+        errorDetails: updateRes?.error ?? error ?? "Failed to save product fields",
         onRetry: handleSaveAsDraftModal,
       });
     }
   }
+
 
   // Publish modal handler
   async function handlePublishModal() {
@@ -163,31 +211,9 @@ export function EditProductForm({ product, categories }: EditProductFormProps) {
     setFeedback({
       status: "loading",
       title: "Publishing Product…",
-      message: "Syncing product details and publishing status to Supabase",
+      message: "Publishing product status to Supabase",
     });
 
-    const basePriceKobo = Math.round((Number(price) || 0) * 100);
-    const salePriceKobo = salePrice ? Math.round(Number(salePrice) * 100) : null;
-    const costPriceKobo = costPrice ? Math.round(Number(costPrice) * 100) : null;
-
-    // 1. Update form field values first
-    await execute(() =>
-      updateProductAction({
-        id: product.id,
-        name,
-        slug,
-        description: description || undefined,
-        category_id: categoryId || null,
-        base_price: basePriceKobo,
-        sale_price: salePriceKobo,
-        cost_price: costPriceKobo,
-        is_featured: isFeatured,
-        seo_title: seoTitle || null,
-        seo_description: seoDescription || null,
-      })
-    );
-
-    // 2. Publish
     const res = await execute(() => publishProductAction(product.id));
 
     if (res?.success) {
@@ -207,6 +233,8 @@ export function EditProductForm({ product, categories }: EditProductFormProps) {
       });
     }
   }
+
+
 
   // Unpublish modal handler
   async function handleUnpublishModal() {
@@ -387,6 +415,16 @@ export function EditProductForm({ product, categories }: EditProductFormProps) {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {/* Save Changes Button */}
+          <button
+            type="button"
+            onClick={() => handleSaveChanges()}
+            disabled={loading}
+            className="inline-flex h-9 items-center gap-1.5 rounded-[var(--kit-radius-md)] bg-[var(--kit-accent)] px-3.5 text-xs font-semibold text-white hover:opacity-90 transition-colors disabled:opacity-50"
+          >
+            <Save size={14} /> Save Changes
+          </button>
+
           {/* Storefront Preview */}
           <Link
             href={`/products/${product.slug}`}
@@ -407,7 +445,7 @@ export function EditProductForm({ product, categories }: EditProductFormProps) {
       )}
 
       {/* Main Edit Form */}
-      <form onSubmit={(e) => { e.preventDefault(); setIsPublishModalOpen(true); }} className="space-y-6">
+      <form onSubmit={handleSaveChanges} className="space-y-6">
         {/* Product Details Section */}
         <div className="rounded-[var(--kit-radius-lg)] border border-[var(--kit-border)] bg-[var(--kit-card)] p-6 shadow-[var(--kit-shadow-sm)] space-y-4">
           <h2 className="text-sm font-semibold text-[var(--kit-text-primary)]">Product Information</h2>
@@ -757,8 +795,18 @@ export function EditProductForm({ product, categories }: EditProductFormProps) {
         </div>
       )}
 
-      {/* Bottom Action Bar: Next (Review & Publish) at the end of all cards */}
-      <div className="flex justify-end pt-6 pb-12 border-t border-[var(--kit-border)]">
+      {/* Bottom Action Bar: Save Changes and Next (Review & Publish) */}
+      <div className="flex flex-wrap items-center justify-between gap-4 pt-6 pb-12 border-t border-[var(--kit-border)]">
+        <button
+          type="button"
+          onClick={() => handleSaveChanges()}
+          disabled={loading}
+          className="inline-flex h-11 items-center gap-2 rounded-xl border border-[var(--kit-accent)] bg-[var(--kit-accent)]/10 px-6 text-sm font-bold text-[var(--kit-accent)] hover:bg-[var(--kit-accent)]/20 transition-all disabled:opacity-50"
+        >
+          <Save size={16} />
+          <span>Save Changes</span>
+        </button>
+
         <button
           type="button"
           onClick={() => setIsPublishModalOpen(true)}
@@ -912,6 +960,8 @@ function VariantRow({
       })
     );
   }
+
+
 
   return (
     <div className="flex flex-col gap-2 p-3 sm:flex-row sm:items-center sm:justify-between bg-[var(--kit-surface)]">

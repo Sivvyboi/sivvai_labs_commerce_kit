@@ -19,7 +19,8 @@ import { ArrowLeft, MessageSquare, CreditCard, MapPin, User, Package } from "luc
 import { clsx } from "clsx";
 
 import { useAdmin } from "@/features/admin/hooks/useAdmin";
-import { updateOrderStatusAction, addOrderNoteAction } from "@/features/admin/actions/admin.actions";
+import { updateOrderStatusAction, addOrderNoteAction } from "@/features/admin/actions/order.actions";
+
 import { StatusBadge } from "@/components/admin/ui/StatusBadge";
 import { OrderStatusValues } from "@/lib/validation/admin";
 import type { OrderWithLines } from "@/lib/db/orders";

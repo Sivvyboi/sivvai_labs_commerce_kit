@@ -24,7 +24,7 @@ export default async function TeamInvitationsPage() {
     getRolesAction(),
   ]);
 
-  const invitations = invRes.success && invRes.invitations ? invRes.invitations : [];
+  const invitations = (invRes.success && invRes.invitations ? invRes.invitations : []) as unknown as Parameters<typeof InvitationsPageClient>[0]["invitations"];
   const roles = rolesRes.success ? rolesRes.roles || [] : [];
 
   return (

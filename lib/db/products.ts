@@ -159,13 +159,132 @@ export async function findProducts(
   return { data: (data || []) as unknown as ProductWithDetails[], count: count || 0 };
 }
 
+/**
+ * Admin-only: lists products of any status using the authenticated admin session.
+ * RLS is still enforced via the admin user's JWT — this just bypasses the
+ * "anon can only see published" constraint on the public client.
+ * Does NOT default to status=published so all statuses are returned unless filtered.
+ */
+export async function findProductsAdmin(
+  params: FindProductsParams = {}
+): Promise<{ data: ProductWithDetails[]; count: number }> {
+  const supabase = await createClient();
+
+  let categoryId: string | undefined;
+  if (params.categorySlug) {
+    const { data: cat } = await supabase
+      .from("categories")
+      .select("id")
+      .eq("slug", params.categorySlug)
+      .maybeSingle();
+
+    if (cat) {
+      categoryId = cat.id;
+    }
+  }
+
+  let query = supabase
+    .from("products")
+    .select(PRODUCT_COLUMNS, { count: "exact" });
+
+  // Admin: filter by status if provided, otherwise return ALL statuses
+  if (params.status) {
+    query = query.eq("status", params.status);
+  }
+
+  if (categoryId) {
+    query = query.eq("category_id", categoryId);
+  }
+
+  if (params.featured !== undefined) {
+    query = query.eq("is_featured", params.featured);
+  }
+
+  if (params.minPrice !== undefined && !isNaN(params.minPrice)) {
+    query = query.gte("base_price", params.minPrice);
+  }
+  if (params.maxPrice !== undefined && !isNaN(params.maxPrice)) {
+    query = query.lte("base_price", params.maxPrice);
+  }
+
+  // Full-text search
+  if (params.search) {
+    const sanitized = params.search.trim().replace(/[&|!():*'"\\]/g, " ").trim();
+    if (sanitized) {
+      query = query.textSearch("search_vector", sanitized, {
+        type: "websearch",
+        config: "english",
+      });
+    }
+  }
+
+  // Sorting
+  const sort = params.sort ?? "newest";
+  switch (sort) {
+    case "oldest":
+      query = query.order("created_at", { ascending: true });
+      break;
+    case "price-asc":
+      query = query.order("base_price", { ascending: true });
+      break;
+    case "price-desc":
+      query = query.order("base_price", { ascending: false });
+      break;
+    case "name-asc":
+      query = query.order("name", { ascending: true });
+      break;
+    case "name-desc":
+      query = query.order("name", { ascending: false });
+      break;
+    case "featured":
+      query = query
+        .order("is_featured", { ascending: false })
+        .order("created_at", { ascending: false });
+      break;
+    case "newest":
+    default:
+      query = query.order("created_at", { ascending: false });
+      break;
+  }
+
+  // Pagination
+  if (params.limit) {
+    const from = params.offset || 0;
+    const to = from + params.limit - 1;
+    query = query.range(from, to);
+  }
+
+  const { data, error, count } = await query;
+  if (error) throw error;
+  return { data: (data || []) as unknown as ProductWithDetails[], count: count || 0 };
+}
+
+
 export async function findProductById(id: string): Promise<ProductWithDetails | null> {
   const supabase = createPublicClient();
   const { data, error } = await supabase
     .from("products")
     .select(PRODUCT_COLUMNS)
     .eq("id", id)
-    .single();
+    .maybeSingle();
+
+  if (error || !data) return null;
+  return data as unknown as ProductWithDetails;
+}
+
+/**
+ * Admin-only: fetches any product by ID regardless of status (draft, archived, etc).
+ * Uses the session-aware server client so RLS evaluates the authenticated admin user's
+ * JWT — security is maintained without needing the service-role key.
+ * Uses .maybeSingle() to return null cleanly (no 406) when no row is found.
+ */
+export async function findProductByIdAdmin(id: string): Promise<ProductWithDetails | null> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("products")
+    .select(PRODUCT_COLUMNS)
+    .eq("id", id)
+    .maybeSingle();
 
   if (error || !data) return null;
   return data as unknown as ProductWithDetails;
@@ -177,7 +296,7 @@ export async function findProductBySlug(slug: string): Promise<ProductWithDetail
     .from("products")
     .select(PRODUCT_COLUMNS)
     .eq("slug", slug)
-    .single();
+    .maybeSingle();
 
   if (error || !data) return null;
   return data as unknown as ProductWithDetails;

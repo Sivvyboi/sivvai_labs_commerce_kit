@@ -29,7 +29,7 @@ export async function findCartById(id: string): Promise<CartWithLines | null> {
     .single();
 
   if (error || !data) return null;
-  return data as CartWithLines;
+  return (data as unknown) as CartWithLines;
 }
 
 /**
@@ -47,8 +47,29 @@ export async function findCartByCustomerId(customerId: string): Promise<CartWith
     .maybeSingle();
 
   if (error || !data) return null;
-  return data as CartWithLines;
+  return (data as unknown) as CartWithLines;
 }
+
+/**
+ * Finds an active guest cart by its cart_token_hash.
+ * The browser holds only the opaque cart_token; the server hashes it before lookup.
+ * Governed by RLS policy using `cart_token_hash` column.
+ */
+export async function findCartByTokenHash(tokenHash: string): Promise<CartWithLines | null> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("carts")
+    .select("*, items:cart_lines(*, variant:product_variants(*, product:products(*, images:product_images(*))))")
+    .eq("cart_token_hash", tokenHash)
+    .eq("status", "active")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error || !data) return null;
+  return (data as unknown) as CartWithLines;
+}
+
 
 /**
  * Creates a new active cart.
@@ -79,6 +100,45 @@ export async function createCart(customerId?: string): Promise<CartRow> {
   if (error || !data) throw error || new Error("Failed to create cart");
   return data;
 }
+
+/**
+ * Creates a new guest cart with a caller-supplied token hash.
+ * Used when the action layer generates the token before setting the cookie,
+ * so the hash is known without needing a cookie read.
+ */
+export async function createCartWithHash(tokenHash: string): Promise<CartRow> {
+  const supabase = await createClient();
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+  const { data, error } = await supabase
+    .from("carts")
+    .insert({
+      customer_id: null,
+      cart_token_hash: tokenHash,
+      status: "active",
+      expires_at: expiresAt,
+    })
+    .select()
+    .single();
+
+  if (error || !data) throw error || new Error("Failed to create cart");
+  return data;
+}
+
+/**
+ * Updates the cart_token_hash on an existing cart.
+ * Used after login merge to re-key the cart to a new opaque token.
+ */
+export async function updateCartTokenHash(cartId: string, tokenHash: string): Promise<void> {
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("carts")
+    .update({ cart_token_hash: tokenHash })
+    .eq("id", cartId);
+
+  if (error) throw error;
+}
+
 
 /**
  * Adds an item to a cart or increments quantity if item already exists.

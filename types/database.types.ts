@@ -819,6 +819,12 @@ export interface Database {
           promo_code: string | null;
           idempotency_key: string | null;
           status: string;
+          subtotal: number;
+          shipping_total: number;
+          discount_total: number;
+          tax_total: number;
+          grand_total: number;
+          currency: string;
           expires_at: string;
           created_at: string;
           updated_at: string;
@@ -834,6 +840,12 @@ export interface Database {
           promo_code?: string | null;
           idempotency_key?: string | null;
           status?: string;
+          subtotal?: number;
+          shipping_total?: number;
+          discount_total?: number;
+          tax_total?: number;
+          grand_total?: number;
+          currency?: string;
           expires_at: string;
           created_at?: string;
           updated_at?: string;
@@ -849,6 +861,12 @@ export interface Database {
           promo_code?: string | null;
           idempotency_key?: string | null;
           status?: string;
+          subtotal?: number;
+          shipping_total?: number;
+          discount_total?: number;
+          tax_total?: number;
+          grand_total?: number;
+          currency?: string;
           expires_at?: string;
           created_at?: string;
           updated_at?: string;
@@ -1340,7 +1358,15 @@ export interface Database {
       };
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      create_order_from_checkout_rpc: {
+        Args: {
+          p_checkout_session_id: string;
+          p_payment_reference: string;
+        };
+        Returns: Json;
+      };
+    };
     Enums: {
       reservation_status: "active" | "released" | "converted";
     };

@@ -15,7 +15,8 @@ import {
   updateStoreSettingsAction,
   updateBrandProfileAction,
   updateFeatureFlagAction,
-} from "@/features/admin/actions/admin.actions";
+} from "@/features/admin/actions/store.actions";
+
 import type { StoreSettingsRow, BrandProfileRow, FeatureFlagRow } from "@/lib/db/store";
 
 interface StoreSettingsManagerProps {

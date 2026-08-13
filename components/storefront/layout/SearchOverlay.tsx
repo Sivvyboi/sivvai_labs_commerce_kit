@@ -19,7 +19,9 @@ import { useRouter } from "next/navigation";
 import type { ProductWithDetails } from "@/lib/db/products";
 import { Price } from "@/components/shared/Price";
 import { ROUTES } from "@/constants/routes";
+import { searchProductsAction } from "@/features/storefront/actions/catalog.actions";
 import { Search, X, History, ArrowRight, Loader2 } from "lucide-react";
+
 
 export interface SearchOverlayProps {
   isOpen: boolean;
@@ -80,18 +82,18 @@ export function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
 
       setLoading(true);
       try {
-        const res = await fetch(
-          `/api/products?search=${encodeURIComponent(query.trim())}&limit=5`
-        );
-        if (res.ok) {
-          const json = (await res.json()) as { data?: ProductWithDetails[]; products?: ProductWithDetails[] };
-          setResults(json.data ?? json.products ?? []);
+        const res = await searchProductsAction(query.trim(), 5);
+        if (res.success) {
+          setResults(res.products);
+        } else {
+          setResults([]);
         }
       } catch {
         setResults([]);
       } finally {
         setLoading(false);
       }
+
     }, delay);
 
     return () => clearTimeout(timer);

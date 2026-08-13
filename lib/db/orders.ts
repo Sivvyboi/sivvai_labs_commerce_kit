@@ -72,7 +72,7 @@ export async function findOrderById(id: string): Promise<OrderWithLines | null> 
     .single();
 
   if (error || !data) return null;
-  return data as OrderWithLines;
+  return (data as unknown) as OrderWithLines;
 }
 
 export async function findOrderByNumber(orderNumber: string): Promise<OrderWithLines | null> {
@@ -84,7 +84,7 @@ export async function findOrderByNumber(orderNumber: string): Promise<OrderWithL
     .single();
 
   if (error || !data) return null;
-  return data as OrderWithLines;
+  return (data as unknown) as OrderWithLines;
 }
 
 export async function findOrderByNumberAndEmail(
@@ -118,7 +118,7 @@ export async function findCustomerOrders(customerId: string): Promise<OrderWithL
     .order("created_at", { ascending: false });
 
   if (error) throw error;
-  return (data || []) as OrderWithLines[];
+  return ((data || []) as unknown) as OrderWithLines[];
 }
 
 export async function updateOrderStatus(id: string, status: string): Promise<OrderRow> {
@@ -170,7 +170,7 @@ export async function findAllOrders(
 
   const { data, error, count } = await query;
   if (error) throw error;
-  return { data: (data ?? []) as OrderWithLines[], count: count ?? 0 };
+  return { data: ((data ?? []) as unknown) as OrderWithLines[], count: count ?? 0 };
 }
 
 export async function insertOrderNote(

@@ -57,7 +57,9 @@ export async function initiateCheckout(input: InitiateCheckoutInput) {
     discountTotal = promoResult.discountAmount;
   }
 
-  // 5. Create checkout_session
+  const grandTotal = Math.max(0, cart.subtotal + shippingTotal - discountTotal);
+
+  // 5. Create checkout_session with locked totals
   const session = await checkoutRepo.createCheckoutSession({
     customer_id: customer.id,
     cart_id: cart.id,
@@ -67,6 +69,12 @@ export async function initiateCheckout(input: InitiateCheckoutInput) {
     shipping_address: input.shippingAddress as Json,
     fulfilment_method_id: input.shippingMethodId ?? null,
     promo_code: input.promoCode ?? null,
+    subtotal: cart.subtotal,
+    shipping_total: shippingTotal,
+    discount_total: discountTotal,
+    tax_total: 0,
+    grand_total: grandTotal,
+    currency: "NGN",
     status: "open",
     expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
   });

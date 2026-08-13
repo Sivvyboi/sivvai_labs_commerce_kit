@@ -5,12 +5,13 @@
  *
  * Server Actions for storefront shopping cart management.
  *
- * Security & Cookie Specs:
- *  - Cookie name: `cart_id`
+ * Security & Cookie Model:
+ *  - Cookie name: `cart_token` (opaque random UUID — NEVER the DB cart.id)
+ *  - On cart creation: generate fresh token → hash → store hash in carts.cart_token_hash
+ *  - On cart resolution: read token from cookie → hash server-side → findCartByTokenHash()
+ *  - The browser never knows the DB cart UUID or the hash.
  *  - httpOnly: true, secure in production, sameSite: lax, maxAge: 7 days
- *  - Unit prices are NEVER accepted from the client; they are always resolved
- *    server-side from the database (product_variants → products).
- *  - Revalidates path cache after mutations.
+ *  - Unit prices are NEVER accepted from the client; always resolved server-side.
  */
 
 import { cookies } from "next/headers";
@@ -18,17 +19,22 @@ import { revalidatePath } from "next/cache";
 import * as cartService from "@/services/cart-service";
 import * as promotionService from "@/services/promotion-service";
 import * as cartRepo from "@/lib/db/carts";
+import {
+  CART_COOKIE_NAME,
+  generateCartToken,
+  hashCartToken,
+} from "@/lib/auth/cart-token";
 import type { EnrichedCart } from "@/services/cart-service";
 
-const CART_COOKIE_NAME = "cart_id";
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 7; // 7 days
 
 /**
- * Helper to get cookie store and set the cart_id cookie securely.
+ * Writes an opaque cart_token into the browser cookie.
+ * The token value stored here is the raw UUID — not the hash, not the cart ID.
  */
-async function setCartCookie(cartId: string) {
+async function setCartTokenCookie(token: string) {
   const cookieStore = await cookies();
-  cookieStore.set(CART_COOKIE_NAME, cartId, {
+  cookieStore.set(CART_COOKIE_NAME, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
@@ -38,29 +44,48 @@ async function setCartCookie(cartId: string) {
 }
 
 /**
- * Reads active cart_id from cookie, fetches cart from cartService.
- * If cookie missing or cart invalid/expired, creates a new cart and sets the cookie.
+ * Reads the current cart_token from cookies and returns it, or null.
+ */
+async function readCartToken(): Promise<string | null> {
+  const cookieStore = await cookies();
+  return cookieStore.get(CART_COOKIE_NAME)?.value ?? null;
+}
+
+/**
+ * Creates a fresh guest cart with a new opaque token.
+ * The token is written to the cookie; the hash is stored in the DB.
+ * Returns the enriched cart.
+ */
+async function createGuestCartWithToken(): Promise<{ cart: EnrichedCart; token: string }> {
+  const token = generateCartToken();
+  const tokenHash = hashCartToken(token);
+
+  // createCart() reads getCartTokenHash() from cookies — we need the hash
+  // available at insert time. Since cookie isn't set yet, we pass the hash directly.
+  const newCartRow = await cartRepo.createCartWithHash(tokenHash);
+  await setCartTokenCookie(token);
+
+  const cart = await cartService.getCart(newCartRow.id);
+  return { cart, token };
+}
+
+/**
+ * Reads active cart_token from cookie and resolves the cart via hash.
+ * If cookie missing, invalid, or cart expired, creates a new guest cart.
  */
 export async function getOrCreateCartAction(): Promise<{
   success: boolean;
   cart: EnrichedCart;
 }> {
-  const cookieStore = await cookies();
-  const existingCartId = cookieStore.get(CART_COOKIE_NAME)?.value;
+  const token = await readCartToken();
 
-  if (existingCartId) {
-    try {
-      const cart = await cartService.getCart(existingCartId);
-      return { success: true, cart };
-    } catch {
-      // Cart expired or not found — fall through to create a new one
-    }
+  if (token) {
+    const cart = await cartService.getCartByToken(token);
+    if (cart) return { success: true, cart };
+    // Token present but cart not found (expired/deleted) — fall through to create
   }
 
-  const newCartRecord = await cartService.createCart();
-  await setCartCookie(newCartRecord.id);
-
-  const cart = await cartService.getCart(newCartRecord.id);
+  const { cart } = await createGuestCartWithToken();
   return { success: true, cart };
 }
 
@@ -68,8 +93,7 @@ export async function getOrCreateCartAction(): Promise<{
  * Adds an item (variant) to the active cart.
  * Creates cart if not yet created.
  *
- * Note: `unitPriceSnapshot` is intentionally absent from this action's params.
- * The authoritative price is always resolved server-side in the repository layer.
+ * Note: `unitPriceSnapshot` is intentionally absent. Price is resolved server-side.
  */
 export async function addToCartAction(params: {
   variantId: string;
@@ -80,13 +104,21 @@ export async function addToCartAction(params: {
   error?: string;
 }> {
   try {
-    const cookieStore = await cookies();
-    let cartId = cookieStore.get(CART_COOKIE_NAME)?.value;
+    const token = await readCartToken();
+    let cartId: string;
 
-    if (!cartId) {
-      const newCart = await cartService.createCart();
+    if (token) {
+      const existingCart = await cartService.getCartByToken(token);
+      if (existingCart) {
+        cartId = existingCart.id;
+      } else {
+        // Token exists but cart is gone — create fresh
+        const { cart: newCart } = await createGuestCartWithToken();
+        cartId = newCart.id;
+      }
+    } else {
+      const { cart: newCart } = await createGuestCartWithToken();
       cartId = newCart.id;
-      await setCartCookie(cartId);
     }
 
     const { cart } = await cartService.addItemToCart({
@@ -99,22 +131,16 @@ export async function addToCartAction(params: {
     return { success: true, cart };
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to add item to cart";
-    const cookieStore = await cookies();
-    const existingCartId = cookieStore.get(CART_COOKIE_NAME)?.value;
-    let fallbackCart: EnrichedCart | null = null;
 
-    if (existingCartId) {
-      try {
-        fallbackCart = await cartService.getCart(existingCartId);
-      } catch {
-        // ignore
-      }
-    }
+    // Return current cart state on failure
+    const token = await readCartToken();
+    let fallbackCart: EnrichedCart | null = token
+      ? await cartService.getCartByToken(token)
+      : null;
 
     if (!fallbackCart) {
-      const newCart = await cartService.createCart();
-      await setCartCookie(newCart.id);
-      fallbackCart = await cartService.getCart(newCart.id);
+      const { cart } = await createGuestCartWithToken();
+      fallbackCart = cart;
     }
 
     return { success: false, cart: fallbackCart, error: message };
@@ -179,11 +205,12 @@ export async function clearCartAction(): Promise<{
   error?: string;
 }> {
   try {
-    const cookieStore = await cookies();
-    const cartId = cookieStore.get(CART_COOKIE_NAME)?.value;
-
-    if (cartId) {
-      await cartRepo.clearCart(cartId);
+    const token = await readCartToken();
+    if (token) {
+      const existingCart = await cartService.getCartByToken(token);
+      if (existingCart) {
+        await cartRepo.clearCart(existingCart.id);
+      }
     }
 
     const { cart } = await getOrCreateCartAction();
@@ -203,8 +230,8 @@ export async function clearCartAction(): Promise<{
  * Merges the current guest cart into the authenticated customer's cart.
  * Call this immediately after a successful sign-in.
  *
- * The guest cart_id cookie is cleared once the merge completes; the
- * customer's cart ID is written back to the cookie.
+ * The guest cart_token cookie is replaced with a new token pointing at the
+ * merged customer cart. The browser still sees only an opaque token.
  */
 export async function mergeCartOnLoginAction(customerId: string): Promise<{
   success: boolean;
@@ -212,16 +239,27 @@ export async function mergeCartOnLoginAction(customerId: string): Promise<{
   error?: string;
 }> {
   try {
-    const cookieStore = await cookies();
-    const guestCartId = cookieStore.get(CART_COOKIE_NAME)?.value;
+    const token = await readCartToken();
+
+    // Resolve guest cart ID by token (never trust cookie value as raw ID)
+    let guestCartId: string | undefined;
+    if (token) {
+      const guestCart = await cartService.getCartByToken(token);
+      if (guestCart) guestCartId = guestCart.id;
+    }
 
     const mergedCart = await cartService.mergeGuestCartOnLogin({
       guestCartId: guestCartId ?? "",
       customerId,
     });
 
-    // Point the cookie at the customer's cart
-    await setCartCookie(mergedCart.id);
+    // Issue a new opaque token pointing at the merged customer cart.
+    // The hash of this new token is stored on the cart row.
+    const newToken = generateCartToken();
+    const newHash = hashCartToken(newToken);
+    await cartRepo.updateCartTokenHash(mergedCart.id, newHash);
+    await setCartTokenCookie(newToken);
+
     revalidatePath("/", "layout");
     return { success: true, cart: mergedCart };
   } catch (err) {

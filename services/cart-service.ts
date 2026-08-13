@@ -2,6 +2,7 @@ import "server-only";
 import * as cartRepo from "@/lib/db/carts";
 import type { CartLineWithVariant, CartWithLines } from "@/lib/db/carts";
 import * as inventoryService from "./inventory-service";
+import { hashCartToken } from "@/lib/auth/cart-token";
 import { NotFoundError } from "@/lib/errors";
 
 export interface EnrichedCart extends CartWithLines {
@@ -9,31 +10,45 @@ export interface EnrichedCart extends CartWithLines {
   itemCount: number;
 }
 
-/**
- * Fetches a cart by ID and computes the server-authoritative subtotal
- * using the stored unit_price_snapshot (set at the repo level from DB prices).
- */
-export async function getCart(cartId: string): Promise<EnrichedCart> {
-  const cart = await cartRepo.findCartById(cartId);
-  if (!cart) {
-    throw new NotFoundError("Cart", cartId);
-  }
-
+function enrichCart(cart: CartWithLines): EnrichedCart {
   const items: CartLineWithVariant[] = cart.items || [];
   const subtotal = items.reduce((acc, item) => {
     // unit_price_snapshot is stored in minor units (cents/kobo)
     const price = item.unit_price_snapshot ?? 0;
     return acc + (Number(price) / 100) * item.quantity;
   }, 0);
-
   const itemCount = items.reduce((acc, item) => acc + item.quantity, 0);
-
   return { ...cart, subtotal, itemCount };
+}
+
+/**
+ * Fetches a cart by DB ID and computes the server-authoritative subtotal.
+ * Used only for authenticated customer carts where the server holds the ID.
+ */
+export async function getCart(cartId: string): Promise<EnrichedCart> {
+  const cart = await cartRepo.findCartById(cartId);
+  if (!cart) {
+    throw new NotFoundError("Cart", cartId);
+  }
+  return enrichCart(cart);
+}
+
+/**
+ * Resolves a guest cart by the opaque cart_token from the browser cookie.
+ * The token is hashed server-side before the DB lookup — the browser never
+ * supplies or knows the raw cart ID or hash.
+ */
+export async function getCartByToken(cartToken: string): Promise<EnrichedCart | null> {
+  const tokenHash = hashCartToken(cartToken);
+  const cart = await cartRepo.findCartByTokenHash(tokenHash);
+  if (!cart) return null;
+  return enrichCart(cart);
 }
 
 export async function createCart(customerId?: string) {
   return cartRepo.createCart(customerId);
 }
+
 
 /**
  * Adds a variant to the cart. The unit price is always resolved server-side

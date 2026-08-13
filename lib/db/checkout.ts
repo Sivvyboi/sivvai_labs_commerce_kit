@@ -36,7 +36,7 @@ export async function findCheckoutSessionById(
     .single();
 
   if (error || !data) return null;
-  return data as CheckoutSessionWithReservations;
+  return (data as unknown) as CheckoutSessionWithReservations;
 }
 
 export async function updateCheckoutSession(

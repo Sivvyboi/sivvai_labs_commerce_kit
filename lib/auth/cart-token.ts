@@ -5,6 +5,14 @@ import crypto from "crypto";
 export const CART_COOKIE_NAME = "cart_token";
 
 /**
+ * Generates a new cryptographically random opaque cart token.
+ * This is the value stored in the browser cookie — never the DB cart ID.
+ */
+export function generateCartToken(): string {
+  return crypto.randomUUID();
+}
+
+/**
  * Computes a SHA-256 hex hash of the raw cart token.
  * This hash is stored in `carts.cart_token_hash` and passed via `x-cart-token-hash` header.
  */

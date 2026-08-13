@@ -20,7 +20,7 @@ export async function findCustomerById(id: string): Promise<CustomerWithAddresse
     .single();
 
   if (error || !data) return null;
-  return data as CustomerWithAddresses;
+  return (data as unknown) as CustomerWithAddresses;
 }
 
 export async function findCustomerByEmail(email: string): Promise<CustomerWithAddresses | null> {
@@ -32,7 +32,7 @@ export async function findCustomerByEmail(email: string): Promise<CustomerWithAd
     .maybeSingle();
 
   if (error || !data) return null;
-  return data as CustomerWithAddresses;
+  return (data as unknown) as CustomerWithAddresses;
 }
 
 export async function createCustomer(data: CustomerInsert): Promise<CustomerRow> {
@@ -72,7 +72,7 @@ export async function findCustomerByAuthId(authId: string): Promise<CustomerWith
     .maybeSingle();
 
   if (error || !data) return null;
-  return data as CustomerWithAddresses;
+  return (data as unknown) as CustomerWithAddresses;
 }
 
 export async function findCustomerAddresses(customerId: string): Promise<CustomerAddressRow[]> {
@@ -186,6 +186,6 @@ export async function findAllCustomers(
 
   const { data, error, count } = await query;
   if (error) throw error;
-  return { data: (data ?? []) as CustomerWithAddresses[], count: count ?? 0 };
+  return { data: ((data ?? []) as unknown) as CustomerWithAddresses[], count: count ?? 0 };
 }
 
