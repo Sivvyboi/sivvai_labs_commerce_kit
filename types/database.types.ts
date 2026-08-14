@@ -315,6 +315,7 @@ export interface Database {
           seo_title: string | null;
           seo_description: string | null;
           archived_at: string | null;
+          deleted_at: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -335,6 +336,7 @@ export interface Database {
           seo_title?: string | null;
           seo_description?: string | null;
           archived_at?: string | null;
+          deleted_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -355,6 +357,7 @@ export interface Database {
           seo_title?: string | null;
           seo_description?: string | null;
           archived_at?: string | null;
+          deleted_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };

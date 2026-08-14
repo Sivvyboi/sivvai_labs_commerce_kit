@@ -39,6 +39,7 @@ export interface FindProductsParams {
   maxPrice?: number;
   sort?: ProductSortOption;
   status?: string;
+  excludeArchived?: boolean;
   limit?: number;
   offset?: number;
   search?: string;
@@ -83,7 +84,8 @@ export async function findProducts(
 
   let query = supabase
     .from("products")
-    .select(PRODUCT_COLUMNS, { count: "exact" });
+    .select(PRODUCT_COLUMNS, { count: "exact" })
+    .is("deleted_at", null);
 
   // Status filter (default: published)
   if (params.status) {
@@ -164,6 +166,7 @@ export async function findProducts(
  * RLS is still enforced via the admin user's JWT — this just bypasses the
  * "anon can only see published" constraint on the public client.
  * Does NOT default to status=published so all statuses are returned unless filtered.
+ * Excludes soft-deleted products (deleted_at IS NULL).
  */
 export async function findProductsAdmin(
   params: FindProductsParams = {}
@@ -185,11 +188,14 @@ export async function findProductsAdmin(
 
   let query = supabase
     .from("products")
-    .select(PRODUCT_COLUMNS, { count: "exact" });
+    .select(PRODUCT_COLUMNS, { count: "exact" })
+    .is("deleted_at", null);
 
-  // Admin: filter by status if provided, otherwise return ALL statuses
+  // Admin: filter by status if provided, or exclude archived if specified
   if (params.status) {
     query = query.eq("status", params.status);
+  } else if (params.excludeArchived) {
+    query = query.neq("status", "archived");
   }
 
   if (categoryId) {
@@ -266,6 +272,7 @@ export async function findProductById(id: string): Promise<ProductWithDetails | 
     .from("products")
     .select(PRODUCT_COLUMNS)
     .eq("id", id)
+    .is("deleted_at", null)
     .maybeSingle();
 
   if (error || !data) return null;
@@ -284,6 +291,7 @@ export async function findProductByIdAdmin(id: string): Promise<ProductWithDetai
     .from("products")
     .select(PRODUCT_COLUMNS)
     .eq("id", id)
+    .is("deleted_at", null)
     .maybeSingle();
 
   if (error || !data) return null;
@@ -296,6 +304,7 @@ export async function findProductBySlug(slug: string): Promise<ProductWithDetail
     .from("products")
     .select(PRODUCT_COLUMNS)
     .eq("slug", slug)
+    .is("deleted_at", null)
     .maybeSingle();
 
   if (error || !data) return null;
@@ -329,4 +338,21 @@ export async function updateProduct(id: string, data: ProductUpdate): Promise<Pr
 
 export async function archiveProduct(id: string): Promise<ProductRow> {
   return updateProduct(id, { status: "archived", archived_at: new Date().toISOString() });
+}
+
+export async function softDeleteProduct(id: string): Promise<ProductRow> {
+  const supabase = await createClient();
+  const { data: updated, error } = await supabase
+    .from("products")
+    .update({ deleted_at: new Date().toISOString() })
+    .eq("id", id)
+    .eq("status", "archived")
+    .is("deleted_at", null)
+    .select()
+    .single();
+
+  if (error || !updated) {
+    throw error || new Error("Failed to delete product from catalog or product is not in archived state");
+  }
+  return updated;
 }

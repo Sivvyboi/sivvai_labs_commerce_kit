@@ -134,12 +134,90 @@ export async function restoreProductAction(id: string) {
 
     revalidateTag("catalog", "default");
     revalidatePath("/admin/products");
+    revalidatePath("/admin/products/archived");
     revalidatePath("/admin");
     return { success: true, product: restored };
   } catch (err) {
     return {
       success: false,
       error: err instanceof Error ? err.message : "Failed to restore product",
+    };
+  }
+}
+
+export async function deleteProductFromCatalogAction(id: string) {
+  try {
+    await requirePermission("manage_products");
+    const deleted = await productService.deleteProductFromCatalog(id);
+
+    await logAuditEvent({
+      action: "product.delete_from_catalog",
+      entityType: "product",
+      entityId: id,
+    });
+
+    revalidateTag("catalog", "default");
+    revalidatePath("/", "layout");
+    revalidatePath("/admin/products");
+    revalidatePath("/admin/products/archived");
+    revalidatePath("/admin");
+    return { success: true, product: deleted };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to delete product from catalog",
+    };
+  }
+}
+
+export async function bulkDeleteProductsFromCatalogAction(productIds: string[]) {
+  try {
+    await requirePermission("manage_products");
+    if (!Array.isArray(productIds) || productIds.length === 0) {
+      return { success: false, error: "No products selected" };
+    }
+
+    const failed: { id: string; error: string }[] = [];
+    const succeeded: string[] = [];
+
+    // Delete sequentially to avoid rate limit spikes on storage & DB
+    for (const id of productIds) {
+      try {
+        await productService.deleteProductFromCatalog(id);
+        await logAuditEvent({
+          action: "product.delete_from_catalog",
+          entityType: "product",
+          entityId: id,
+        });
+        succeeded.push(id);
+      } catch (itemErr) {
+        failed.push({
+          id,
+          error: itemErr instanceof Error ? itemErr.message : "Unknown error",
+        });
+      }
+    }
+
+    revalidateTag("catalog", "default");
+    revalidatePath("/", "layout");
+    revalidatePath("/admin/products");
+    revalidatePath("/admin/products/archived");
+    revalidatePath("/admin");
+
+    if (failed.length > 0) {
+      return {
+        success: succeeded.length > 0,
+        succeeded,
+        failed,
+        error: `Deleted ${succeeded.length} product(s), but failed to delete ${failed.length}: ${failed.map((f) => f.error).join("; ")}`,
+      };
+    }
+
+    return { success: true, succeeded, failed: [] };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to bulk delete products from catalog",
     };
   }
 }

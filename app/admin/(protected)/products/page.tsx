@@ -3,12 +3,13 @@
  *
  * Admin Products List — Server Component.
  * Supports search (?q=), status filter (?status=), and pagination.
+ * Excludes archived products from this view (managed under /admin/products/archived).
  */
 
 import * as React from "react";
 import Link from "next/link";
 import type { Metadata } from "next";
-import { Plus } from "lucide-react";
+import { Plus, Archive } from "lucide-react";
 import { clsx } from "clsx";
 
 import { getAllProducts } from "@/services/product-service";
@@ -32,22 +33,22 @@ interface AdminProductsPageProps {
 export default async function AdminProductsPage({ searchParams }: AdminProductsPageProps) {
   const params = await searchParams;
   const search = params.q;
-  const status = params.status !== "all" ? params.status : undefined;
+  const status = params.status && params.status !== "all" ? params.status : undefined;
   const offset = Number(params.offset ?? 0);
   const limit = 20;
 
   const { data: products, count } = await getAllProducts({
     search,
     status,
+    excludeArchived: !status, // If viewing all on main products page, exclude archived
     offset,
     limit,
   });
 
   const statuses = [
-    { label: "All Statuses", value: "all" },
+    { label: "All Active", value: "all" },
     { label: "Published", value: "published" },
     { label: "Draft", value: "draft" },
-    { label: "Archived", value: "archived" },
   ];
 
   return (
@@ -57,20 +58,33 @@ export default async function AdminProductsPage({ searchParams }: AdminProductsP
         <div>
           <h1 className="text-xl font-bold text-[var(--kit-text-primary)]">Products</h1>
           <p className="mt-0.5 text-sm text-[var(--kit-text-secondary)]">
-            Manage your store catalog ({count} total)
+            Manage your store catalog ({count} active)
           </p>
         </div>
 
-        <Link
-          id="admin-new-product-btn"
-          href="/admin/products/new"
-          className={clsx(
-            "inline-flex h-9 items-center gap-1.5 rounded-[var(--kit-radius-md)] px-4 text-sm font-medium",
-            "bg-[var(--kit-accent)] text-white hover:opacity-90 transition-opacity"
-          )}
-        >
-          <Plus size={16} /> New Product
-        </Link>
+        <div className="flex items-center gap-2.5">
+          <Link
+            id="admin-archived-products-btn"
+            href="/admin/products/archived"
+            className={clsx(
+              "inline-flex h-9 items-center gap-1.5 rounded-[var(--kit-radius-md)] px-3 text-xs font-medium",
+              "border border-[var(--kit-border)] bg-[var(--kit-surface)] text-[var(--kit-text-secondary)] hover:text-[var(--kit-text-primary)] hover:bg-[var(--kit-card)] transition-colors"
+            )}
+          >
+            <Archive size={14} /> Archived Products
+          </Link>
+
+          <Link
+            id="admin-new-product-btn"
+            href="/admin/products/new"
+            className={clsx(
+              "inline-flex h-9 items-center gap-1.5 rounded-[var(--kit-radius-md)] px-4 text-sm font-medium",
+              "bg-[var(--kit-accent)] text-white hover:opacity-90 transition-opacity"
+            )}
+          >
+            <Plus size={16} /> New Product
+          </Link>
+        </div>
       </div>
 
       {/* Filter row */}

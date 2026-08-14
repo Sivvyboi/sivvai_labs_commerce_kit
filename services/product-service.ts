@@ -181,6 +181,23 @@ export async function addProductImage(
 }
 
 /**
+ * Deletes a physical file object from Supabase Storage by its relative storage path.
+ * Throws an error if deletion fails.
+ */
+export async function removeStorageObject(path: string, bucket = "product-images"): Promise<void> {
+  if (!path) return;
+  const supabase = createAdminClient();
+  const { error } = await supabase.storage
+    .from(bucket)
+    .remove([path]);
+
+  if (error) {
+    console.error(`[removeStorageObject] Storage removal failed for '${path}' in bucket '${bucket}':`, error.message);
+    throw new Error(`Storage cleanup failed for '${path}': ${error.message}`);
+  }
+}
+
+/**
  * Extracts the relative storage object path from a Supabase storage URL.
  * Returns null if the URL does not belong to the specified Supabase storage bucket.
  */
@@ -216,7 +233,7 @@ export function extractStoragePath(url: string, bucket = "product-images"): stri
 }
 
 /**
- * Removes a product image by ID.
+ * Removes a single product image by ID.
  * Resolves the physical storage object path from the image record's URL,
  * removes the object from the Supabase `product-images` storage bucket (if hosted there),
  * and deletes the database record from `product_images`.
@@ -243,17 +260,10 @@ export async function removeProductImage(imageId: string) {
   // 2. Determine if URL is hosted in Supabase Storage and remove physical object
   const storagePath = extractStoragePath(imageRecord.url, "product-images");
   if (storagePath) {
-    const { error: storageError } = await supabase.storage
-      .from("product-images")
-      .remove([storagePath]);
-
-    if (storageError) {
-      console.error(`[removeProductImage] Storage deletion failed for path '${storagePath}':`, storageError.message);
-      throw new Error(`Failed to delete image file from storage: ${storageError.message}`);
-    }
+    await removeStorageObject(storagePath, "product-images");
   }
 
-  // 3. Delete database record
+  // 3. Delete database record only after physical storage cleanup succeeds
   const { error: deleteError } = await supabase
     .from("product_images")
     .delete()
@@ -262,6 +272,69 @@ export async function removeProductImage(imageId: string) {
   if (deleteError) {
     throw new Error(`Failed to delete product image database record: ${deleteError.message}`);
   }
+}
+
+/**
+ * Deletes all physical storage objects and corresponding database records for a product.
+ * Invariant: For each image, the database row is deleted ONLY after its Storage object
+ * is confirmed removed. If any image fails, an error is thrown, the failed image's DB
+ * row remains for retry safety, and execution halts before catalog soft-delete.
+ */
+export async function deleteProductImages(productId: string): Promise<void> {
+  const supabase = createAdminClient();
+
+  const { data: images, error: fetchError } = await supabase
+    .from("product_images")
+    .select("id, url")
+    .eq("product_id", productId);
+
+  if (fetchError) {
+    throw new Error(`Failed to fetch product images for product ${productId}: ${fetchError.message}`);
+  }
+
+  if (!images || images.length === 0) {
+    return;
+  }
+
+  for (const img of images) {
+    const storagePath = extractStoragePath(img.url, "product-images");
+    if (storagePath) {
+      await removeStorageObject(storagePath, "product-images");
+    }
+
+    const { error: deleteError } = await supabase
+      .from("product_images")
+      .delete()
+      .eq("id", img.id);
+
+    if (deleteError) {
+      throw new Error(`Failed to delete image record ${img.id}: ${deleteError.message}`);
+    }
+  }
+}
+
+/**
+ * Permanently removes an archived product from the catalog.
+ * Lifecycle rule: Only products in 'archived' state (and not already deleted) can be deleted.
+ * Safety rule: Physical storage images are cleaned up first. If image cleanup fails, the product
+ * is NOT soft-deleted. DB relational identity (variants, orders, snapshots) is preserved.
+ */
+export async function deleteProductFromCatalog(productId: string) {
+  // 1. Fetch product to verify state
+  const product = await findProductByIdAdmin(productId);
+  if (!product) {
+    throw new NotFoundError("Product", productId);
+  }
+
+  if (product.status !== "archived") {
+    throw new Error("Only archived products can be deleted from the catalog. Please archive this product first.");
+  }
+
+  // 2. Clean up physical images from storage and their db records (aborts and preserves archived state if any fails)
+  await deleteProductImages(productId);
+
+  // 3. Mark product soft-deleted in database
+  return productRepo.softDeleteProduct(productId);
 }
 
 /** Creates an option group for a product (e.g. Size, Color) */

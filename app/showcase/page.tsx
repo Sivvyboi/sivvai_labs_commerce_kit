@@ -62,6 +62,7 @@ const mockProduct: ProductWithDetails = {
   created_at: new Date().toISOString(),
   updated_at: new Date().toISOString(),
   archived_at: null,
+  deleted_at: null,
   category_id: "cat-1",
   category: {
     id: "cat-1",
