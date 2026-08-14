@@ -180,11 +180,88 @@ export async function addProductImage(
   return data;
 }
 
-/** Removes a product image by ID */
+/**
+ * Extracts the relative storage object path from a Supabase storage URL.
+ * Returns null if the URL does not belong to the specified Supabase storage bucket.
+ */
+export function extractStoragePath(url: string, bucket = "product-images"): string | null {
+  if (!url) return null;
+
+  try {
+    // If it is already a direct relative path within the bucket
+    if (!url.startsWith("http://") && !url.startsWith("https://") && !url.startsWith("/")) {
+      return url;
+    }
+
+    const parsed = new URL(url, "http://localhost");
+    const pathname = parsed.pathname;
+    const bucketMarker = `/${bucket}/`;
+    const bucketIdx = pathname.indexOf(bucketMarker);
+
+    if (bucketIdx !== -1) {
+      const rawPath = pathname.slice(bucketIdx + bucketMarker.length);
+      return decodeURIComponent(rawPath);
+    }
+
+    return null;
+  } catch {
+    const bucketMarker = `/${bucket}/`;
+    const bucketIdx = url.indexOf(bucketMarker);
+    if (bucketIdx !== -1) {
+      const rawPath = url.slice(bucketIdx + bucketMarker.length).split("?")[0];
+      return decodeURIComponent(rawPath);
+    }
+    return null;
+  }
+}
+
+/**
+ * Removes a product image by ID.
+ * Resolves the physical storage object path from the image record's URL,
+ * removes the object from the Supabase `product-images` storage bucket (if hosted there),
+ * and deletes the database record from `product_images`.
+ */
 export async function removeProductImage(imageId: string) {
   const supabase = createAdminClient();
-  const { error } = await supabase.from("product_images").delete().eq("id", imageId);
-  if (error) throw error;
+
+  // 1. Fetch image record to obtain the URL
+  const { data: imageRecord, error: fetchError } = await supabase
+    .from("product_images")
+    .select("id, url, product_id")
+    .eq("id", imageId)
+    .maybeSingle();
+
+  if (fetchError) {
+    throw new Error(`Failed to fetch product image record: ${fetchError.message}`);
+  }
+
+  // If record is already deleted from DB, treat as idempotent success
+  if (!imageRecord) {
+    return;
+  }
+
+  // 2. Determine if URL is hosted in Supabase Storage and remove physical object
+  const storagePath = extractStoragePath(imageRecord.url, "product-images");
+  if (storagePath) {
+    const { error: storageError } = await supabase.storage
+      .from("product-images")
+      .remove([storagePath]);
+
+    if (storageError) {
+      console.error(`[removeProductImage] Storage deletion failed for path '${storagePath}':`, storageError.message);
+      throw new Error(`Failed to delete image file from storage: ${storageError.message}`);
+    }
+  }
+
+  // 3. Delete database record
+  const { error: deleteError } = await supabase
+    .from("product_images")
+    .delete()
+    .eq("id", imageId);
+
+  if (deleteError) {
+    throw new Error(`Failed to delete product image database record: ${deleteError.message}`);
+  }
 }
 
 /** Creates an option group for a product (e.g. Size, Color) */
