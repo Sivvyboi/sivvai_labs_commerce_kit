@@ -117,6 +117,7 @@ export interface InventoryWithVariant extends InventoryRecordRow {
       id: string;
       name: string;
       status: string;
+      deleted_at?: string | null;
     } | null;
   } | null;
 }
@@ -126,16 +127,17 @@ export async function findAllInventoryWithVariants(): Promise<InventoryWithVaria
   const supabase = createAdminClient();
   const { data, error } = await supabase
     .from("inventory_records")
-    .select("*, variant:product_variants(id, sku, price_override, product:products(id, name, status))")
+    .select("*, variant:product_variants(id, sku, price_override, product:products(id, name, status, deleted_at))")
     .order("created_at", { ascending: false });
 
   if (error) throw error;
-  return (data ?? []) as unknown as InventoryWithVariant[];
+  const items = (data ?? []) as unknown as InventoryWithVariant[];
+  return items.filter((inv) => Boolean(inv.variant?.product && !inv.variant.product.deleted_at));
 }
 
 /**
  * Returns inventory records where available stock (on_hand - reserved) is at or below the threshold.
- * Excludes variants whose products are archived.
+ * Excludes variants whose products are soft-deleted or archived.
  */
 export async function findLowStockItems(threshold = 5): Promise<InventoryWithVariant[]> {
   const supabase = createAdminClient();
@@ -143,13 +145,14 @@ export async function findLowStockItems(threshold = 5): Promise<InventoryWithVar
   // fetch candidates and filter in-process (counts are small)
   const { data, error } = await supabase
     .from("inventory_records")
-    .select("*, variant:product_variants(id, sku, price_override, product:products(id, name, status))")
+    .select("*, variant:product_variants(id, sku, price_override, product:products(id, name, status, deleted_at))")
     .eq("track_inventory", true);
 
   if (error) throw error;
 
   return ((data ?? []) as unknown as InventoryWithVariant[]).filter((inv) => {
-    if ((inv.variant?.product?.status ?? "") === "archived") return false;
+    if (!inv.variant?.product || inv.variant.product.deleted_at) return false;
+    if (inv.variant.product.status === "archived") return false;
     const available = inv.on_hand_quantity - inv.reserved_quantity;
     return available <= threshold;
   });
