@@ -9,21 +9,112 @@
 import { revalidatePath } from "next/cache";
 import { getCurrentUser } from "@/lib/auth/server-auth";
 import { createClient } from "@/lib/supabase/server";
+import * as customerRepo from "@/lib/db/customers";
 import * as customerService from "@/services/customer-service";
 import * as orderService from "@/services/order-service";
 import { getOrCreateCartAction, mergeCartOnLoginAction } from "./cart.actions";
-import type {
-  UpdateCustomerProfileInput,
-  CustomerAddressInput,
-  GuestOrderLookupInput,
+import {
+  CustomerSignInSchema,
+  CustomerSignUpSchema,
+  CustomerForgotPasswordSchema,
+  CustomerResetPasswordSchema,
+  type CustomerSignInInput,
+  type CustomerSignUpInput,
+  type CustomerForgotPasswordInput,
+  type CustomerResetPasswordInput,
+  type UpdateCustomerProfileInput,
+  type CustomerAddressInput,
+  type GuestOrderLookupInput,
 } from "@/lib/validation/customer";
+
+/**
+ * Registers a new customer in Supabase Auth and links/creates their customer record.
+ * Automatically merges any active guest cart into their new customer cart.
+ */
+export async function signUpAction(input: CustomerSignUpInput) {
+  try {
+    const validated = CustomerSignUpSchema.parse(input);
+    const supabase = await createClient();
+
+    const { data: authData, error: authError } = await supabase.auth.signUp({
+      email: validated.email,
+      password: validated.password,
+      options: {
+        data: {
+          first_name: validated.firstName,
+          last_name: validated.lastName,
+        },
+      },
+    });
+
+    if (authError || !authData.user) {
+      return { success: false, error: authError?.message ?? "Registration failed" };
+    }
+
+    const authUser = authData.user;
+
+    // Check if an existing customer record exists by email (e.g. from guest checkout)
+    let customer = await customerRepo.findCustomerByEmail(validated.email);
+
+    if (customer) {
+      // Link existing record to new auth_id
+      customer = (await customerRepo.updateCustomer(customer.id, {
+        auth_id: authUser.id,
+        first_name: validated.firstName,
+        last_name: validated.lastName,
+        phone: validated.phone || customer.phone,
+      })) as unknown as typeof customer;
+    } else {
+      // Create fresh customer record
+      const created = await customerRepo.createCustomer({
+        auth_id: authUser.id,
+        email: validated.email,
+        first_name: validated.firstName,
+        last_name: validated.lastName,
+        phone: validated.phone || null,
+        status: "active",
+      });
+      customer = created as unknown as typeof customer;
+    }
+
+    // If a session was returned (email auto-confirmed), merge guest cart immediately
+    if (authData.session && customer?.id) {
+      await mergeCartOnLoginAction(customer.id);
+    }
+
+    revalidatePath("/", "layout");
+    return {
+      success: true,
+      requiresEmailConfirmation: !authData.session,
+      userId: authUser.id,
+      customer,
+    };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Registration failed",
+    };
+  }
+}
 
 /**
  * Signs in a customer and immediately merges any active guest cart into
  * their authenticated cart. Returns the merged cart alongside the auth result.
  */
-export async function signInAction(email: string, password: string) {
+export async function signInAction(emailOrInput: string | CustomerSignInInput, maybePassword?: string) {
   try {
+    let email: string;
+    let password: string;
+
+    if (typeof emailOrInput === "object") {
+      const validated = CustomerSignInSchema.parse(emailOrInput);
+      email = validated.email;
+      password = validated.password;
+    } else {
+      email = emailOrInput;
+      password = maybePassword || "";
+    }
+
     const supabase = await createClient();
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error || !data.user) {
@@ -39,11 +130,63 @@ export async function signInAction(email: string, password: string) {
     }
 
     revalidatePath("/", "layout");
-    return { success: true, userId: data.user.id };
+    return { success: true, userId: data.user.id, customer };
   } catch (err) {
     return {
       success: false,
       error: err instanceof Error ? err.message : "Sign-in failed",
+    };
+  }
+}
+
+/**
+ * Sends a password reset email to a customer.
+ */
+export async function requestCustomerPasswordResetAction(input: CustomerForgotPasswordInput) {
+  try {
+    const validated = CustomerForgotPasswordSchema.parse(input);
+    const supabase = await createClient();
+    const origin = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+
+    const { error } = await supabase.auth.resetPasswordForEmail(validated.email, {
+      redirectTo: `${origin}/auth/callback?next=/auth/reset-password`,
+    });
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    return { success: true };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to send reset email",
+    };
+  }
+}
+
+/**
+ * Updates customer password during password reset flow.
+ */
+export async function resetCustomerPasswordAction(input: CustomerResetPasswordInput) {
+  try {
+    const validated = CustomerResetPasswordSchema.parse(input);
+    const supabase = await createClient();
+
+    const { error } = await supabase.auth.updateUser({
+      password: validated.password,
+    });
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    revalidatePath("/", "layout");
+    return { success: true };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Password reset failed",
     };
   }
 }

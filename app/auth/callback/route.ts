@@ -16,17 +16,22 @@ export async function GET(request: NextRequest) {
   const code = searchParams.get("code");
   const type = searchParams.get("type");
   const invitationToken = searchParams.get("token");
-  const next = searchParams.get("next") || "/admin";
+  const next = searchParams.get("next") || "/account";
+
+  const isExplicitAdmin = type === "admin_invite" || next.startsWith("/admin");
+  const errorRedirect = isExplicitAdmin
+    ? `${origin}/admin/login?error=auth_callback_failed`
+    : `${origin}/auth/sign-in?error=auth_callback_failed`;
 
   if (!code) {
-    return NextResponse.redirect(`${origin}/admin/login?error=auth_callback_failed`);
+    return NextResponse.redirect(errorRedirect);
   }
 
   const supabase = await createClient();
   const { data: sessionData, error } = await supabase.auth.exchangeCodeForSession(code);
 
   if (error || !sessionData?.session) {
-    return NextResponse.redirect(`${origin}/admin/login?error=auth_callback_failed`);
+    return NextResponse.redirect(errorRedirect);
   }
 
   // --- Admin Invitation acceptance ---

@@ -1,9 +1,11 @@
 "use client";
 
+import * as React from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { featureFlag } from "@/config/feature-flags";
+import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils/cn";
+import { signOutAction } from "@/features/storefront/actions/account.actions";
+import { ROUTES } from "@/constants/routes";
 import {
   LayoutDashboard,
   ShoppingBag,
@@ -11,10 +13,13 @@ import {
   MapPin,
   Search,
   LogOut,
+  Loader2,
 } from "lucide-react";
 
 export function AccountSidebar() {
   const pathname = usePathname();
+  const router = useRouter();
+  const [isPending, startTransition] = React.useTransition();
 
   const navItems = [
     { label: "Overview", href: "/account", icon: LayoutDashboard },
@@ -23,6 +28,14 @@ export function AccountSidebar() {
     { label: "Addresses", href: "/account/addresses", icon: MapPin },
     { label: "Order Lookup", href: "/orders/lookup", icon: Search },
   ];
+
+  function handleSignOut() {
+    startTransition(async () => {
+      await signOutAction();
+      router.push(ROUTES.auth.signIn);
+      router.refresh();
+    });
+  }
 
   return (
     <aside className="w-full md:w-64 shrink-0">
@@ -47,19 +60,19 @@ export function AccountSidebar() {
           );
         })}
 
-        {/* Render Logout ONLY when featureFlag.auth is enabled */}
-        {featureFlag.auth && (
-          <button
-            onClick={() => {
-              // Trigger sign-out action when auth is active
-              window.location.href = "/api/auth/signout";
-            }}
-            className="flex items-center gap-3 px-4 py-3 text-sm font-medium rounded-lg text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20 transition-colors whitespace-nowrap min-h-[44px] mt-auto"
-          >
+        {/* Sign Out button */}
+        <button
+          onClick={handleSignOut}
+          disabled={isPending}
+          className="flex items-center gap-3 px-4 py-3 text-sm font-medium rounded-lg text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20 transition-colors whitespace-nowrap min-h-[44px] mt-auto disabled:opacity-50 text-left w-full"
+        >
+          {isPending ? (
+            <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+          ) : (
             <LogOut className="h-4 w-4 shrink-0" />
-            <span>Sign Out</span>
-          </button>
-        )}
+          )}
+          <span>{isPending ? "Signing out…" : "Sign Out"}</span>
+        </button>
       </nav>
     </aside>
   );

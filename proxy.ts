@@ -37,6 +37,12 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
     pathname === "/admin/forgot-password" ||
     pathname === "/admin/reset-password";
 
+  const isCustomerAuthRoute =
+    pathname === "/auth/sign-in" ||
+    pathname === "/auth/sign-up" ||
+    pathname === "/auth/forgot-password" ||
+    pathname === "/auth/reset-password";
+
   const isAdminRoute = pathname.startsWith("/admin");
 
   // Protection: redirect unauthenticated users away from protected admin routes
@@ -46,9 +52,9 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
     return NextResponse.redirect(loginUrl);
   }
 
-  // Redirect authenticated users away from admin auth routes (e.g. login)
-  if (isAdminAuthRoute && user) {
-    return NextResponse.redirect(new URL("/admin", request.url));
+  // Redirect authenticated customers away from customer auth pages (e.g. sign-in)
+  if (isCustomerAuthRoute && user && pathname !== "/auth/reset-password") {
+    return NextResponse.redirect(new URL("/account", request.url));
   }
 
   return response;

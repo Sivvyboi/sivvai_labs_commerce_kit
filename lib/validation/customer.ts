@@ -27,3 +27,43 @@ export const CustomerAddressSchema = z.object({
 
 export type CustomerAddressInput = z.infer<typeof CustomerAddressSchema>;
 
+// ---------------------------------------------------------------------------
+// Customer Authentication Schemas
+// ---------------------------------------------------------------------------
+
+export const CustomerSignInSchema = z.object({
+  email: z.string().email("Valid email address is required"),
+  password: z.string().min(6, "Password must be at least 6 characters"),
+});
+
+export type CustomerSignInInput = z.infer<typeof CustomerSignInSchema>;
+
+export const CustomerSignUpSchema = z.object({
+  firstName: z.string().min(1, "First name is required"),
+  lastName: z.string().min(1, "Last name is required"),
+  email: z.string().email("Valid email address is required"),
+  phone: z.string().optional().nullable(),
+  password: z.string().min(6, "Password must be at least 6 characters"),
+});
+
+export type CustomerSignUpInput = z.infer<typeof CustomerSignUpSchema>;
+
+export const CustomerForgotPasswordSchema = z.object({
+  email: z.string().email("Valid email address is required"),
+});
+
+export type CustomerForgotPasswordInput = z.infer<typeof CustomerForgotPasswordSchema>;
+
+export const CustomerResetPasswordSchema = z
+  .object({
+    password: z.string().min(6, "Password must be at least 6 characters"),
+    confirmPassword: z.string().min(6, "Password confirmation is required"),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: "Passwords do not match",
+    path: ["confirmPassword"],
+  });
+
+export type CustomerResetPasswordInput = z.infer<typeof CustomerResetPasswordSchema>;
+
+

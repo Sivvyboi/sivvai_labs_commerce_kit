@@ -83,6 +83,7 @@ export const ROUTES = {
     signUp: "/auth/sign-up",
     callback: "/auth/callback",
     forgotPassword: "/auth/forgot-password",
+    resetPassword: "/auth/reset-password",
   },
 
   // ---------------------------------------------------------------------------
