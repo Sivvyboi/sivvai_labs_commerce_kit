@@ -52,20 +52,23 @@ async function readCartToken(): Promise<string | null> {
 }
 
 /**
- * Creates a fresh guest cart with a new opaque token.
+ * Creates a fresh guest cart with an opaque token.
  * The token is written to the cookie; the hash is stored in the DB.
  * Returns the enriched cart.
  */
-async function createGuestCartWithToken(): Promise<{ cart: EnrichedCart; token: string }> {
-  const token = generateCartToken();
+async function createGuestCartWithToken(existingToken?: string | null): Promise<{ cart: EnrichedCart; token: string }> {
+  const token = existingToken || generateCartToken();
   const tokenHash = hashCartToken(token);
 
-  // createCart() reads getCartTokenHash() from cookies — we need the hash
-  // available at insert time. Since cookie isn't set yet, we pass the hash directly.
   const newCartRow = await cartRepo.createCartWithHash(tokenHash);
-  await setCartTokenCookie(token);
+  if (!existingToken) {
+    await setCartTokenCookie(token);
+  }
 
-  const cart = await cartService.getCart(newCartRow.id);
+  const cart = await cartService.getCartByToken(token);
+  if (!cart) {
+    return { cart: await cartService.getCart(newCartRow.id), token };
+  }
   return { cart, token };
 }
 
@@ -82,10 +85,10 @@ export async function getOrCreateCartAction(): Promise<{
   if (token) {
     const cart = await cartService.getCartByToken(token);
     if (cart) return { success: true, cart };
-    // Token present but cart not found (expired/deleted) — fall through to create
+    // Token present but cart not found (expired/deleted) — create with this token
   }
 
-  const { cart } = await createGuestCartWithToken();
+  const { cart } = await createGuestCartWithToken(token);
   return { success: true, cart };
 }
 
@@ -112,8 +115,8 @@ export async function addToCartAction(params: {
       if (existingCart) {
         cartId = existingCart.id;
       } else {
-        // Token exists but cart is gone — create fresh
-        const { cart: newCart } = await createGuestCartWithToken();
+        // Token exists but cart is gone — create fresh with existing token
+        const { cart: newCart } = await createGuestCartWithToken(token);
         cartId = newCart.id;
       }
     } else {

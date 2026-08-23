@@ -36,10 +36,12 @@ export async function signUpAction(input: CustomerSignUpInput) {
     const validated = CustomerSignUpSchema.parse(input);
     const supabase = await createClient();
 
+    const origin = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
     const { data: authData, error: authError } = await supabase.auth.signUp({
       email: validated.email,
       password: validated.password,
       options: {
+        emailRedirectTo: `${origin}/auth/confirm?next=/account`,
         data: {
           first_name: validated.firstName,
           last_name: validated.lastName,

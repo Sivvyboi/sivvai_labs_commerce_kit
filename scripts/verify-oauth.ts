@@ -1,15 +1,16 @@
 /**
  * scripts/verify-oauth.ts
  *
- * Verification Suite for Phase 4.2: Google OAuth Authentication.
+ * Verification Suite for Phase 4.2: Google OAuth & Auth/Cart Regression Fixes.
  *
  * Verifies:
  * 1. Google OAuth metadata name parsing (given_name, family_name, full_name, name)
  * 2. Customer synchronization & deduplication (first-time, guest-link, duplicate)
  * 3. Guest-cart merging & reconciliation lifecycle
- * 4. Callback route branching & purpose preservation
- * 5. UI Integration, Google button rendering, & accessibility
- * 6. Clean removal of Apple-specific dependencies/buttons
+ * 4. Callback route & Confirm route architecture (PKCE, verifyOtp, error handling)
+ * 5. Cart RLS token header injection & cart creation safety
+ * 6. UI Integration, Google button rendering, & accessibility
+ * 7. Clean removal of Apple-specific dependencies/buttons
  */
 
 import { parseOAuthNames } from "../lib/auth/oauth";
@@ -17,7 +18,7 @@ import * as fs from "fs";
 
 async function runOAuthVerification() {
   console.log("=================================================");
-  console.log("Phase 4.2 Verification: Google OAuth Authentication");
+  console.log("Phase 4.2 Verification: Google OAuth & Auth Fixes");
   console.log("=================================================\n");
 
   let passed = 0;
@@ -219,20 +220,42 @@ async function runOAuthVerification() {
   assert(finalMergedLines.length === 3, "No duplicate cart line entries created");
 
   // -------------------------------------------------------------
-  // Test 7: Callback Purpose Preservation Check
+  // Test 7: Email Confirmation & Callback Route Architecture
   // -------------------------------------------------------------
-  console.log("\n--- 4. Callback Architecture & Purpose Preservation ---");
+  console.log("\n--- 4. Email Confirmation & Callback Route Tests ---");
+
+  const confirmCode = fs.readFileSync("app/auth/confirm/route.ts", "utf-8");
+  assert(confirmCode.includes("supabase.auth.verifyOtp"), "app/auth/confirm implements verifyOtp");
+  assert(confirmCode.includes("syncCustomerOnOAuthLogin"), "app/auth/confirm synchronizes customer record");
+  assert(confirmCode.includes("mergeCartOnLoginAction"), "app/auth/confirm merges active guest cart");
 
   const callbackCode = fs.readFileSync("app/auth/callback/route.ts", "utf-8");
   assert(callbackCode.includes('type === "admin_invite"'), "Callback preserves Admin Invitation handler");
   assert(callbackCode.includes('next.startsWith("/auth/reset-password")'), "Callback preserves Password Reset flow");
-  assert(callbackCode.includes("syncCustomerOnOAuthLogin"), "Callback integrates customer OAuth synchronization");
-  assert(callbackCode.includes("mergeCartOnLoginAction"), "Callback reconciles guest cart on login");
+  assert(callbackCode.includes("exchangeCodeForSession"), "Callback handles PKCE exchange");
+  assert(callbackCode.includes("verifyOtp"), "Callback handles token_hash OTP fallback");
+  assert(callbackCode.includes("authError"), "Callback handles provider error parameters gracefully");
 
   // -------------------------------------------------------------
-  // Test 8: UI Integration & Scope Check (Google only)
+  // Test 8: Cart RLS & Token Header Safety
   // -------------------------------------------------------------
-  console.log("\n--- 5. UI Integration & Google-Only Scope Checks ---");
+  console.log("\n--- 5. Cart RLS & Token Header Tests ---");
+
+  const serverClientCode = fs.readFileSync("lib/supabase/server.ts", "utf-8");
+  assert(serverClientCode.includes("options?.cartTokenHash"), "createServerClient supports explicit cartTokenHash header");
+  assert(serverClientCode.includes('"x-cart-token-hash"'), "createServerClient passes x-cart-token-hash header");
+
+  const cartDbCode = fs.readFileSync("lib/db/carts.ts", "utf-8");
+  assert(cartDbCode.includes("cartTokenHash: tokenHash"), "createCartWithHash passes matching tokenHash to createClient");
+  assert(cartDbCode.includes("findCartByTokenHash"), "findCartByTokenHash queries with matching tokenHash");
+
+  const cartActionsCode = fs.readFileSync("features/storefront/actions/cart.actions.ts", "utf-8");
+  assert(cartActionsCode.includes("createGuestCartWithToken(token)"), "getOrCreateCartAction reuses existing token on recreation");
+
+  // -------------------------------------------------------------
+  // Test 9: UI Integration & Scope Check (Google only)
+  // -------------------------------------------------------------
+  console.log("\n--- 6. UI Integration & Google-Only Scope Checks ---");
 
   const signInFormCode = fs.readFileSync("components/storefront/auth/SignInForm.tsx", "utf-8");
   const signUpFormCode = fs.readFileSync("components/storefront/auth/SignUpForm.tsx", "utf-8");

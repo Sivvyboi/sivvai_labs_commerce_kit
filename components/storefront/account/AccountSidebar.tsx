@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils/cn";
 import { signOutAction } from "@/features/storefront/actions/account.actions";
+import { useCustomerAuth } from "@/features/storefront/hooks/useCustomerAuth";
 import { ROUTES } from "@/constants/routes";
 import {
   LayoutDashboard,
@@ -13,12 +14,14 @@ import {
   MapPin,
   Search,
   LogOut,
+  LogIn,
   Loader2,
 } from "lucide-react";
 
 export function AccountSidebar() {
   const pathname = usePathname();
   const router = useRouter();
+  const { isAuthenticated } = useCustomerAuth();
   const [isPending, startTransition] = React.useTransition();
 
   const navItems = [
@@ -60,19 +63,32 @@ export function AccountSidebar() {
           );
         })}
 
-        {/* Sign Out button */}
-        <button
-          onClick={handleSignOut}
-          disabled={isPending}
-          className="flex items-center gap-3 px-4 py-3 text-sm font-medium rounded-lg text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20 transition-colors whitespace-nowrap min-h-[44px] mt-auto disabled:opacity-50 text-left w-full"
-        >
-          {isPending ? (
-            <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
-          ) : (
-            <LogOut className="h-4 w-4 shrink-0" />
-          )}
-          <span>{isPending ? "Signing out…" : "Sign Out"}</span>
-        </button>
+        {/* Sign Out — only shown when authenticated */}
+        {isAuthenticated && (
+          <button
+            onClick={handleSignOut}
+            disabled={isPending}
+            className="flex items-center gap-3 px-4 py-3 text-sm font-medium rounded-lg text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20 transition-colors whitespace-nowrap min-h-[44px] mt-auto disabled:opacity-50 text-left w-full"
+          >
+            {isPending ? (
+              <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+            ) : (
+              <LogOut className="h-4 w-4 shrink-0" />
+            )}
+            <span>{isPending ? "Signing out…" : "Sign Out"}</span>
+          </button>
+        )}
+
+        {/* Sign In — shown if somehow rendered without auth */}
+        {!isAuthenticated && (
+          <Link
+            href={ROUTES.auth.signIn}
+            className="flex items-center gap-3 px-4 py-3 text-sm font-medium rounded-lg text-[var(--kit-accent)] hover:bg-[var(--kit-surface)] transition-colors whitespace-nowrap min-h-[44px] mt-auto w-full"
+          >
+            <LogIn className="h-4 w-4 shrink-0" />
+            <span>Sign In</span>
+          </Link>
+        )}
       </nav>
     </aside>
   );

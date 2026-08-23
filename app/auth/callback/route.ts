@@ -3,10 +3,13 @@
  *
  * Auth Callback Route Handler.
  * Handles:
- *   1. Standard PKCE code exchange (password reset, email confirmation)
- *   2. Admin invitation acceptance — matches token, creates admin_users record
+ *   1. Standard PKCE code exchange (OAuth, password reset, email confirmation)
+ *   2. Server-side token_hash OTP verification
+ *   3. Admin invitation acceptance — matches token, creates admin_users record
+ *   4. Error forwarding from Supabase Auth
  */
 
+import { type EmailOtpType, type User } from "@supabase/supabase-js";
 import { type NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -17,31 +20,64 @@ import { logger } from "@/lib/logger";
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
+  const token_hash = searchParams.get("token_hash");
   const type = searchParams.get("type");
   const invitationToken = searchParams.get("token");
   const next = searchParams.get("next") || "/account";
 
-  const isExplicitAdmin = type === "admin_invite" || next.startsWith("/admin");
-  const errorRedirect = isExplicitAdmin
-    ? `${origin}/admin/login?error=auth_callback_failed`
-    : `${origin}/auth/sign-in?error=auth_callback_failed`;
+  // Error handling from Supabase Auth redirects (e.g. otp_expired, access_denied)
+  const authError = searchParams.get("error");
+  const authErrorCode = searchParams.get("error_code");
+  const authErrorDescription = searchParams.get("error_description");
 
-  if (!code) {
-    return NextResponse.redirect(errorRedirect);
+  const isExplicitAdmin = type === "admin_invite" || type === "invite" || next.startsWith("/admin");
+  const errorBase = isExplicitAdmin ? `${origin}/admin/login` : `${origin}/auth/sign-in`;
+
+  if (authError || authErrorCode) {
+    logger.warn("[AuthCallback] Received auth error from provider/Supabase", {
+      error: authError,
+      errorCode: authErrorCode,
+      description: authErrorDescription,
+    });
+    const errorUrl = new URL(errorBase);
+    errorUrl.searchParams.set("error", authErrorCode || authError || "auth_callback_failed");
+    if (authErrorDescription) {
+      errorUrl.searchParams.set("error_description", authErrorDescription);
+    }
+    return NextResponse.redirect(errorUrl);
   }
 
   const supabase = await createClient();
-  const { data: sessionData, error } = await supabase.auth.exchangeCodeForSession(code);
+  let authUser: User | null = null;
 
-  if (error || !sessionData?.session) {
-    return NextResponse.redirect(errorRedirect);
+  // Case A: PKCE code exchange (OAuth, magic link, PKCE signup)
+  if (code) {
+    const { data: sessionData, error } = await supabase.auth.exchangeCodeForSession(code);
+    if (error || !sessionData?.session) {
+      logger.warn("[AuthCallback] exchangeCodeForSession failed", { error: error?.message });
+      return NextResponse.redirect(`${errorBase}?error=auth_callback_failed`);
+    }
+    authUser = sessionData.session.user;
+  }
+  // Case B: OTP token_hash verification
+  else if (token_hash && type) {
+    const { data, error } = await supabase.auth.verifyOtp({
+      type: type as EmailOtpType,
+      token_hash,
+    });
+    if (error || (!data?.session?.user && !data?.user)) {
+      logger.warn("[AuthCallback] verifyOtp failed", { error: error?.message });
+      return NextResponse.redirect(`${errorBase}?error=auth_confirmation_failed`);
+    }
+    authUser = data.session?.user || data.user;
+  } else {
+    return NextResponse.redirect(`${errorBase}?error=auth_callback_failed`);
   }
 
   // --- Admin Invitation acceptance ---
-  if (type === "admin_invite" && invitationToken) {
+  if (type === "admin_invite" && invitationToken && authUser) {
     try {
       const adminSupabase = createAdminClient();
-      const user = sessionData.session.user;
 
       // Look up the invitation
       const { data: invitation, error: invErr } = await adminSupabase
@@ -52,8 +88,6 @@ export async function GET(request: NextRequest) {
         .single();
 
       if (invErr || !invitation) {
-        // Invitation not found or already used — still let the user log in but
-        // redirect to an error page
         return NextResponse.redirect(`${origin}/admin/login?error=invitation_invalid`);
       }
 
@@ -67,7 +101,7 @@ export async function GET(request: NextRequest) {
       }
 
       // Verify email matches
-      if (user.email?.toLowerCase() !== invitation.email.toLowerCase()) {
+      if (authUser.email?.toLowerCase() !== invitation.email.toLowerCase()) {
         return NextResponse.redirect(`${origin}/admin/login?error=invitation_email_mismatch`);
       }
 
@@ -75,13 +109,12 @@ export async function GET(request: NextRequest) {
       const { data: existingAdmin } = await adminSupabase
         .from("admin_users")
         .select("id")
-        .eq("auth_user_id", user.id)
+        .eq("auth_user_id", authUser.id)
         .maybeSingle();
 
       if (!existingAdmin) {
-        // Create admin_users record
         await adminSupabase.from("admin_users").insert({
-          auth_user_id: user.id,
+          auth_user_id: authUser.id,
           role_id: invitation.role_id,
           is_active: true,
           is_protected_owner: false,
@@ -104,8 +137,7 @@ export async function GET(request: NextRequest) {
   }
 
   // --- Customer Authentication (OAuth, Email Confirmation, Sign-In) ---
-  const authUser = sessionData.session.user;
-  const isPasswordReset = next.startsWith("/auth/reset-password");
+  const isPasswordReset = next.startsWith("/auth/reset-password") || type === "recovery";
 
   if (authUser && !isPasswordReset && !isExplicitAdmin) {
     try {

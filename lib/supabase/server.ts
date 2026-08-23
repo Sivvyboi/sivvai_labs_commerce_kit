@@ -51,10 +51,13 @@ export function createPublicClient() {
  * Reads cookies via next/headers for session management.
  * Passes x-cart-token-hash in request headers to enable guest cart RLS evaluation.
  */
-export async function createServerClient() {
+export async function createServerClient(options?: { cartTokenHash?: string }) {
   const cookieStore = await cookies();
   const rawCartToken = cookieStore.get(CART_COOKIE_NAME)?.value;
-  const cartTokenHash = rawCartToken ? hashCartToken(rawCartToken) : "";
+  const cartTokenHash =
+    options?.cartTokenHash !== undefined
+      ? options.cartTokenHash
+      : (rawCartToken ? hashCartToken(rawCartToken) : "");
 
   return _createServerClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,

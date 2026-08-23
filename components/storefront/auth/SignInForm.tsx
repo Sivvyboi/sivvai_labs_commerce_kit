@@ -19,7 +19,9 @@ import { ROUTES } from "@/constants/routes";
 export function SignInForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirectTo = searchParams.get("redirectTo") || ROUTES.account;
+  // Support both ?next= (from account layout guard) and ?redirectTo= (legacy)
+  const redirectTo =
+    searchParams.get("next") || searchParams.get("redirectTo") || ROUTES.account;
 
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");

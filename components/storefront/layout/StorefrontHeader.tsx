@@ -22,7 +22,8 @@ import { storefrontNav } from "@/config/storefront";
 import { useCartStore } from "@/features/storefront/store/cart.store";
 import { MobileMenuDrawer } from "./MobileMenuDrawer";
 import { SearchOverlay } from "./SearchOverlay";
-import { Search, ShoppingBag, Menu, User } from "lucide-react";
+import { UserAccountMenu } from "./UserAccountMenu";
+import { Search, ShoppingBag, Menu } from "lucide-react";
 import { ROUTES } from "@/constants/routes";
 
 export function StorefrontHeader() {
@@ -77,14 +78,8 @@ export function StorefrontHeader() {
               <Search className="h-5 w-5" />
             </button>
 
-            {/* Account Link */}
-            <Link
-              href="/account"
-              aria-label="My Account"
-              className="flex h-10 w-10 items-center justify-center rounded-lg text-[var(--kit-text-primary)] hover:bg-[var(--kit-surface)] transition-colors"
-            >
-              <User className="h-5 w-5" />
-            </Link>
+            {/* Interactive User Account Menu */}
+            <UserAccountMenu />
 
             {/* Cart Drawer Trigger */}
             <button

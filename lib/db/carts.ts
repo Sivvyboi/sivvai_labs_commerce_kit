@@ -20,8 +20,8 @@ export type CartWithLines = CartRow & {
  * Finds a cart by ID.
  * Governed by RLS policy: "Allow users to select own carts" on `carts`.
  */
-export async function findCartById(id: string): Promise<CartWithLines | null> {
-  const supabase = await createClient();
+export async function findCartById(id: string, tokenHash?: string): Promise<CartWithLines | null> {
+  const supabase = await createClient(tokenHash ? { cartTokenHash: tokenHash } : undefined);
   const { data, error } = await supabase
     .from("carts")
     .select("*, items:cart_lines(*, variant:product_variants(*, product:products(*, images:product_images(*))))")
@@ -56,7 +56,7 @@ export async function findCartByCustomerId(customerId: string): Promise<CartWith
  * Governed by RLS policy using `cart_token_hash` column.
  */
 export async function findCartByTokenHash(tokenHash: string): Promise<CartWithLines | null> {
-  const supabase = await createClient();
+  const supabase = await createClient({ cartTokenHash: tokenHash });
   const { data, error } = await supabase
     .from("carts")
     .select("*, items:cart_lines(*, variant:product_variants(*, product:products(*, images:product_images(*))))")
@@ -78,13 +78,13 @@ export async function findCartByTokenHash(tokenHash: string): Promise<CartWithLi
  * Governed by RLS policy: "Allow users to insert own carts" on `carts`.
  */
 export async function createCart(customerId?: string): Promise<CartRow> {
-  const supabase = await createClient();
-  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-
   let cartTokenHash: string | null = null;
   if (!customerId) {
     cartTokenHash = await getCartTokenHash();
   }
+
+  const supabase = await createClient(cartTokenHash ? { cartTokenHash } : undefined);
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
   const { data, error } = await supabase
     .from("carts")
@@ -107,7 +107,7 @@ export async function createCart(customerId?: string): Promise<CartRow> {
  * so the hash is known without needing a cookie read.
  */
 export async function createCartWithHash(tokenHash: string): Promise<CartRow> {
-  const supabase = await createClient();
+  const supabase = await createClient({ cartTokenHash: tokenHash });
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
   const { data, error } = await supabase
@@ -130,7 +130,7 @@ export async function createCartWithHash(tokenHash: string): Promise<CartRow> {
  * Used after login merge to re-key the cart to a new opaque token.
  */
 export async function updateCartTokenHash(cartId: string, tokenHash: string): Promise<void> {
-  const supabase = await createClient();
+  const supabase = await createClient({ cartTokenHash: tokenHash });
   const { error } = await supabase
     .from("carts")
     .update({ cart_token_hash: tokenHash })
