@@ -13,6 +13,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowRight, Lock, Mail, User, Phone, AlertCircle, Eye, EyeOff, Loader2, CheckCircle2 } from "lucide-react";
 import { signUpAction } from "@/features/storefront/actions/account.actions";
+import { SocialAuthButtons } from "./SocialAuthButtons";
 import { ROUTES } from "@/constants/routes";
 
 export function SignUpForm() {
@@ -87,7 +88,23 @@ export function SignUpForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <div className="space-y-4">
+      {/* Social Sign-Up (Google & Apple) */}
+      <SocialAuthButtons redirectTo={redirectTo} />
+
+      {/* Visual Divider */}
+      <div className="relative my-4">
+        <div className="absolute inset-0 flex items-center">
+          <div className="w-full border-t border-[var(--kit-border)]" />
+        </div>
+        <div className="relative flex justify-center text-xs uppercase">
+          <span className="bg-[var(--kit-card)] px-2.5 text-[var(--kit-muted-fg)] font-semibold tracking-wider text-[11px]">
+            Or register with email
+          </span>
+        </div>
+      </div>
+
+      <form onSubmit={handleSubmit} className="space-y-4">
       {error && (
         <div className="flex items-center gap-2 p-3 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/50 text-red-700 dark:text-red-300 text-xs font-medium animate-in fade-in duration-150">
           <AlertCircle className="h-4 w-4 shrink-0" />
@@ -254,5 +271,6 @@ export function SignUpForm() {
         </Link>
       </div>
     </form>
-  );
+  </div>
+);
 }

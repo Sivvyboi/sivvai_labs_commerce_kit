@@ -140,6 +140,46 @@ export async function signInAction(emailOrInput: string | CustomerSignInInput, m
 }
 
 /**
+ * Initializes OAuth authentication (Google) using Supabase Auth.
+ * Returns the authorization URL for browser redirect.
+ */
+export async function signInWithOAuthAction(input: {
+  provider: "google";
+  redirectTo?: string;
+}) {
+  try {
+    const supabase = await createClient();
+    const origin = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+    const nextPath = input.redirectTo || "/account";
+    const callbackUrl = `${origin}/auth/callback?next=${encodeURIComponent(nextPath)}`;
+
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: input.provider,
+      options: {
+        redirectTo: callbackUrl,
+      },
+    });
+
+    if (error || !data?.url) {
+      return {
+        success: false,
+        error: error?.message || `Failed to initialize ${input.provider} sign-in`,
+      };
+    }
+
+    return {
+      success: true,
+      url: data.url,
+    };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to initialize social sign-in",
+    };
+  }
+}
+
+/**
  * Sends a password reset email to a customer.
  */
 export async function requestCustomerPasswordResetAction(input: CustomerForgotPasswordInput) {

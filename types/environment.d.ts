@@ -59,5 +59,15 @@ declare namespace NodeJS {
     NEXT_PUBLIC_FEATURE_REVIEWS?: string;
     NEXT_PUBLIC_FEATURE_WISHLIST?: string;
     NEXT_PUBLIC_FEATURE_WHATSAPP_CHECKOUT?: string;
+
+    // ------------------------------------------------------------------
+    // Email / Transactional Notifications (Server-only)
+    // ------------------------------------------------------------------
+    /** Active email provider: "resend" | "mock" (defaults to "resend") */
+    EMAIL_PROVIDER?: string;
+    /** Resend API Key (starts with re_) */
+    RESEND_API_KEY?: string;
+    /** Sender email address / name, e.g. "Store <orders@example.com>" */
+    EMAIL_FROM?: string;
   }
 }

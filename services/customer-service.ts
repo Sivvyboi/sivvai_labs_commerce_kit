@@ -2,7 +2,10 @@ import * as customerRepo from "@/lib/db/customers";
 import type { CustomerAddressRow, CustomerRow, CustomerWithAddresses } from "@/lib/db/customers";
 import { UpdateCustomerProfileSchema, CustomerAddressSchema } from "@/lib/validation/customer";
 import type { UpdateCustomerProfileInput, CustomerAddressInput } from "@/lib/validation/customer";
+import { parseOAuthNames, type OAuthUserData } from "@/lib/auth/oauth";
 import { NotFoundError } from "@/lib/errors";
+
+export { parseOAuthNames, type OAuthUserData };
 
 /**
  * services/customer-service.ts
@@ -27,6 +30,64 @@ export async function getCustomerProfile(customerId: string): Promise<CustomerWi
 
 export async function getCustomerByAuthId(authId: string): Promise<CustomerWithAddresses | null> {
   return customerRepo.findCustomerByAuthId(authId);
+}
+
+/**
+ * Synchronizes customer profile on OAuth login:
+ *  1. Checks if customer exists by auth_id (returns or backfills names).
+ *  2. Checks if customer exists by email (links auth_id without creating duplicate).
+ *  3. Creates new customer record if neither exists.
+ */
+export async function syncCustomerOnOAuthLogin(
+  authUser: OAuthUserData
+): Promise<CustomerWithAddresses | null> {
+  const email = authUser.email?.toLowerCase().trim();
+  if (!email) return null;
+
+  const { firstName, lastName } = parseOAuthNames(authUser.user_metadata);
+
+  // 1. Check if customer already exists by auth_id
+  let customer = await customerRepo.findCustomerByAuthId(authUser.id);
+
+  if (customer) {
+    const updates: customerRepo.CustomerUpdate = {};
+    if (!customer.first_name && firstName) updates.first_name = firstName;
+    if (!customer.last_name && lastName) updates.last_name = lastName;
+    if (!customer.phone && authUser.phone) updates.phone = authUser.phone;
+
+    if (Object.keys(updates).length > 0) {
+      await customerRepo.updateCustomer(customer.id, updates);
+      customer = await customerRepo.findCustomerById(customer.id);
+    }
+    return customer;
+  }
+
+  // 2. Check if customer exists by email (e.g. from prior guest checkout or email signup)
+  customer = await customerRepo.findCustomerByEmail(email);
+
+  if (customer) {
+    const updates: customerRepo.CustomerUpdate = {
+      auth_id: authUser.id,
+    };
+    if (!customer.first_name && firstName) updates.first_name = firstName;
+    if (!customer.last_name && lastName) updates.last_name = lastName;
+    if (!customer.phone && authUser.phone) updates.phone = authUser.phone;
+
+    await customerRepo.updateCustomer(customer.id, updates);
+    return customerRepo.findCustomerById(customer.id);
+  }
+
+  // 3. Create fresh customer record
+  const created = await customerRepo.createCustomer({
+    auth_id: authUser.id,
+    email,
+    first_name: firstName,
+    last_name: lastName,
+    phone: authUser.phone || null,
+    status: "active",
+  });
+
+  return customerRepo.findCustomerById(created.id);
 }
 
 export async function updateCustomerProfile(

@@ -46,13 +46,13 @@ export async function createOrderFromCheckout(
 
   // Dispatch notification outside the transaction boundary — a notification
   // failure must never roll back the order.
-  if (order?.customer_id) {
+  if (order?.id) {
     try {
       await notificationService.sendOrderNotification({
         customerId: order.customer_id,
         orderId: order.id,
         channel: "email",
-        recipient: "customer",
+        eventType: "order.created",
       });
     } catch {
       // Notification failures are non-fatal; order is already committed.

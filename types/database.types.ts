@@ -1242,6 +1242,9 @@ export interface Database {
           recipient: string;
           status: string;
           sent_at: string | null;
+          error_message: string | null;
+          metadata: Json | null;
+          idempotency_key: string | null;
           created_at: string;
         };
         Insert: {
@@ -1252,6 +1255,9 @@ export interface Database {
           recipient: string;
           status?: string;
           sent_at?: string | null;
+          error_message?: string | null;
+          metadata?: Json | null;
+          idempotency_key?: string | null;
           created_at?: string;
         };
         Update: {
@@ -1262,6 +1268,9 @@ export interface Database {
           recipient?: string;
           status?: string;
           sent_at?: string | null;
+          error_message?: string | null;
+          metadata?: Json | null;
+          idempotency_key?: string | null;
           created_at?: string;
         };
         Relationships: [];

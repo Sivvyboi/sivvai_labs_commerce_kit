@@ -10,6 +10,9 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { syncCustomerOnOAuthLogin } from "@/services/customer-service";
+import { mergeCartOnLoginAction } from "@/features/storefront/actions/cart.actions";
+import { logger } from "@/lib/logger";
 
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url);
@@ -100,6 +103,30 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // --- Standard callback (password reset, email confirmation) ---
+  // --- Customer Authentication (OAuth, Email Confirmation, Sign-In) ---
+  const authUser = sessionData.session.user;
+  const isPasswordReset = next.startsWith("/auth/reset-password");
+
+  if (authUser && !isPasswordReset && !isExplicitAdmin) {
+    try {
+      const customer = await syncCustomerOnOAuthLogin({
+        id: authUser.id,
+        email: authUser.email,
+        user_metadata: authUser.user_metadata,
+        phone: authUser.phone,
+      });
+
+      if (customer?.id) {
+        // Reconcile active guest cart with authenticated customer cart
+        await mergeCartOnLoginAction(customer.id);
+      }
+    } catch (err) {
+      logger.warn("[AuthCallback] Non-fatal error synchronizing customer profile or merging cart", {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  // --- Standard redirection ---
   return NextResponse.redirect(`${origin}${next}`);
 }

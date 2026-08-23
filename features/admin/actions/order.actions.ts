@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requirePermission } from "@/lib/auth/admin-guard";
 import { logAuditEvent } from "@/services/authz-service";
 import * as orderService from "@/services/order-service";
+import * as notificationService from "@/services/notification-service";
 import { updateOrderStatus } from "@/lib/db/orders";
 import {
   UpdateOrderStatusAdminSchema,
@@ -19,6 +20,18 @@ export async function updateOrderStatusAction(input: UpdateOrderStatusAdminInput
     const updated = await updateOrderStatus(validated.order_id, validated.status);
     if (validated.note) {
       await orderService.addOrderNote(validated.order_id, `Status updated to ${validated.status}: ${validated.note}`);
+    }
+
+    // Send transactional order status update notification (non-fatal)
+    try {
+      await notificationService.sendOrderNotification({
+        orderId: validated.order_id,
+        eventType: "order.status_updated",
+        status: validated.status,
+        note: validated.note,
+      });
+    } catch {
+      // Non-fatal notification failure
     }
 
     await logAuditEvent({
