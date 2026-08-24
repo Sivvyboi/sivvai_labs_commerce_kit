@@ -10,6 +10,7 @@ import {
   Settings,
   Activity,
   UserCheck,
+  Truck,
 } from "lucide-react";
 
 export interface NavItem {
@@ -45,6 +46,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: "Orders", href: "/admin/orders", icon: ShoppingBag, permission: "view_orders" },
       { label: "Customers", href: "/admin/customers", icon: Users, permission: "view_customers" },
+      { label: "Shipping", href: "/admin/shipping", icon: Truck, permission: "manage_settings" },
     ],
   },
   {

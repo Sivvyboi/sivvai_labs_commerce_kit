@@ -225,3 +225,62 @@ export const AdminOrdersFilterSchema = AdminListParamsSchema.extend({
 });
 
 export type AdminOrdersFilter = z.infer<typeof AdminOrdersFilterSchema>;
+
+// ---------------------------------------------------------------------------
+// Shipping & Fulfilment
+// ---------------------------------------------------------------------------
+
+export const CreateShippingZoneSchema = z.object({
+  name: z.string().min(1, "Zone name is required"),
+  regions: z.array(z.string().min(1)).min(1, "At least one region/state is required"),
+});
+
+export type CreateShippingZoneInput = z.infer<typeof CreateShippingZoneSchema>;
+
+export const UpdateShippingZoneSchema = z.object({
+  id: z.string().uuid("Invalid zone ID"),
+  name: z.string().min(1, "Zone name is required").optional(),
+  regions: z.array(z.string().min(1)).min(1, "At least one region/state is required").optional(),
+});
+
+export type UpdateShippingZoneInput = z.infer<typeof UpdateShippingZoneSchema>;
+
+export const FulfilmentMethodTypeValues = ["pickup", "local_delivery", "courier"] as const;
+
+export const CreateFulfilmentMethodSchema = z.object({
+  type: z.enum(FulfilmentMethodTypeValues),
+  name: z.string().min(1, "Method name is required"),
+  description: z.string().optional().nullable(),
+  is_enabled: z.boolean().default(true),
+  estimated_days_min: z.coerce.number().int().min(0, "Minimum delivery days cannot be negative").default(1),
+  estimated_days_max: z.coerce.number().int().min(0, "Maximum delivery days cannot be negative").default(5),
+});
+
+export type CreateFulfilmentMethodInput = z.infer<typeof CreateFulfilmentMethodSchema>;
+
+export const UpdateFulfilmentMethodSchema = z.object({
+  id: z.string().uuid("Invalid method ID"),
+  type: z.enum(FulfilmentMethodTypeValues).optional(),
+  name: z.string().min(1, "Method name is required").optional(),
+  description: z.string().optional().nullable(),
+  is_enabled: z.boolean().optional(),
+  estimated_days_min: z.coerce.number().int().min(0).optional(),
+  estimated_days_max: z.coerce.number().int().min(0).optional(),
+});
+
+export type UpdateFulfilmentMethodInput = z.infer<typeof UpdateFulfilmentMethodSchema>;
+
+export const ShippingRateTypeValues = ["flat", "weight_based", "free_above"] as const;
+
+export const UpsertShippingRateSchema = z.object({
+  id: z.string().uuid().optional(),
+  fulfilment_method_id: z.string().uuid("Invalid fulfilment method ID"),
+  zone_id: z.string().uuid("Invalid shipping zone ID"),
+  rate_type: z.enum(ShippingRateTypeValues).default("flat"),
+  flat_amount: z.coerce.number().min(0, "Flat amount must be 0 or greater").default(0),
+  per_kg_amount: z.coerce.number().min(0).default(0),
+  free_above_order_total: z.coerce.number().min(0).optional().nullable(),
+});
+
+export type UpsertShippingRateInput = z.infer<typeof UpsertShippingRateSchema>;
+

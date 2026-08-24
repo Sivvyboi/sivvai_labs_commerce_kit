@@ -8,6 +8,21 @@ export type FulfilmentMethodRow = Database["public"]["Tables"]["fulfilment_metho
 
 export type ShippingZoneWithRates = ShippingZoneRow & { rates: ShippingRateRow[] };
 
+export type ShippingZoneInsert = Database["public"]["Tables"]["shipping_zones"]["Insert"];
+export type ShippingZoneUpdate = Database["public"]["Tables"]["shipping_zones"]["Update"];
+export type ShippingRateInsert = Database["public"]["Tables"]["shipping_rates"]["Insert"];
+export type ShippingRateUpdate = Database["public"]["Tables"]["shipping_rates"]["Update"];
+export type FulfilmentMethodInsert = Database["public"]["Tables"]["fulfilment_methods"]["Insert"];
+export type FulfilmentMethodUpdate = Database["public"]["Tables"]["fulfilment_methods"]["Update"];
+
+export type ShippingRateWithMethod = ShippingRateRow & {
+  fulfilment_methods: FulfilmentMethodRow | null;
+};
+
+export type ShippingZoneWithRatesAndMethods = ShippingZoneRow & {
+  rates: ShippingRateWithMethod[];
+};
+
 export async function findShippingZones(): Promise<ShippingZoneWithRates[]> {
   const supabase = createPublicClient();
   const { data, error } = await supabase
@@ -24,7 +39,8 @@ export async function findFulfilmentMethods(): Promise<FulfilmentMethodRow[]> {
   const { data, error } = await supabase
     .from("fulfilment_methods")
     .select("*")
-    .eq("is_enabled", true);
+    .eq("is_enabled", true)
+    .order("name", { ascending: true });
 
   if (error) throw error;
   return (data || []) as unknown as FulfilmentMethodRow[];
@@ -57,7 +73,8 @@ export async function findMatchingShippingZone(state?: string): Promise<Shipping
   const supabase = createPublicClient();
   const { data: zones, error } = await supabase
     .from("shipping_zones")
-    .select("*");
+    .select("*")
+    .order("name", { ascending: true });
 
   if (error || !zones || zones.length === 0) return null;
   if (!state) return zones[0] ?? null;
@@ -85,3 +102,181 @@ export async function findShippingRateForMethodAndZone(
   if (error || !data) return null;
   return data as unknown as ShippingRateRow;
 }
+
+// ---------------------------------------------------------------------------
+// Admin Queries & Mutations (Server-Side Authenticated Client)
+// ---------------------------------------------------------------------------
+
+export async function adminFindAllShippingZones(): Promise<ShippingZoneWithRatesAndMethods[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("shipping_zones")
+    .select(`
+      *,
+      rates:shipping_rates(
+        *,
+        fulfilment_methods(*)
+      )
+    `)
+    .order("name", { ascending: true });
+
+  if (error) throw error;
+  return (data || []) as unknown as ShippingZoneWithRatesAndMethods[];
+}
+
+export async function adminFindAllFulfilmentMethods(): Promise<FulfilmentMethodRow[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("fulfilment_methods")
+    .select("*")
+    .order("created_at", { ascending: true });
+
+  if (error) throw error;
+  return (data || []) as unknown as FulfilmentMethodRow[];
+}
+
+export async function adminCreateShippingZone(payload: ShippingZoneInsert): Promise<ShippingZoneRow> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("shipping_zones")
+    .insert(payload)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data as unknown as ShippingZoneRow;
+}
+
+export async function adminUpdateShippingZone(
+  id: string,
+  payload: ShippingZoneUpdate
+): Promise<ShippingZoneRow> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("shipping_zones")
+    .update({ ...payload, updated_at: new Date().toISOString() })
+    .eq("id", id)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data as unknown as ShippingZoneRow;
+}
+
+export async function adminDeleteShippingZone(id: string): Promise<void> {
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("shipping_zones")
+    .delete()
+    .eq("id", id);
+
+  if (error) throw error;
+}
+
+export async function adminCreateFulfilmentMethod(
+  payload: FulfilmentMethodInsert
+): Promise<FulfilmentMethodRow> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("fulfilment_methods")
+    .insert(payload)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data as unknown as FulfilmentMethodRow;
+}
+
+export async function adminUpdateFulfilmentMethod(
+  id: string,
+  payload: FulfilmentMethodUpdate
+): Promise<FulfilmentMethodRow> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("fulfilment_methods")
+    .update({ ...payload, updated_at: new Date().toISOString() })
+    .eq("id", id)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data as unknown as FulfilmentMethodRow;
+}
+
+export async function adminDeleteFulfilmentMethod(id: string): Promise<void> {
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("fulfilment_methods")
+    .delete()
+    .eq("id", id);
+
+  if (error) throw error;
+}
+
+export async function adminUpsertShippingRate(
+  payload: ShippingRateInsert
+): Promise<ShippingRateRow> {
+  const supabase = await createClient();
+
+  if (payload.id) {
+    const { data, error } = await supabase
+      .from("shipping_rates")
+      .update({
+        rate_type: payload.rate_type,
+        flat_amount: payload.flat_amount,
+        per_kg_amount: payload.per_kg_amount,
+        free_above_order_total: payload.free_above_order_total,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", payload.id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data as unknown as ShippingRateRow;
+  }
+
+  // Check if a rate for this method and zone already exists
+  const existing = await findShippingRateForMethodAndZone(
+    payload.fulfilment_method_id,
+    payload.zone_id
+  );
+
+  if (existing) {
+    const { data, error } = await supabase
+      .from("shipping_rates")
+      .update({
+        rate_type: payload.rate_type,
+        flat_amount: payload.flat_amount,
+        per_kg_amount: payload.per_kg_amount,
+        free_above_order_total: payload.free_above_order_total,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", existing.id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data as unknown as ShippingRateRow;
+  }
+
+  const { data, error } = await supabase
+    .from("shipping_rates")
+    .insert(payload)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data as unknown as ShippingRateRow;
+}
+
+export async function adminDeleteShippingRate(id: string): Promise<void> {
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("shipping_rates")
+    .delete()
+    .eq("id", id);
+
+  if (error) throw error;
+}
+
