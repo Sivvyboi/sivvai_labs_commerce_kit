@@ -44,36 +44,7 @@ VALUES
     ('feature.whatsappCheckout', false)
 ON CONFLICT (key) DO NOTHING;
 
--- 4. Fulfilment Methods
-INSERT INTO fulfilment_methods (id, type, name, description, is_enabled, estimated_days_min, estimated_days_max)
-VALUES
-    ('00000000-0000-0000-0000-000000000100'::uuid, 'pickup', 'In-Store Pickup', 'Pick up your order from our Lagos branch for free.', false, 1, 1),
-    ('00000000-0000-0000-0000-000000000200'::uuid, 'local_delivery', 'Lagos Local Delivery', 'Direct dispatcher delivery within Lagos.', false, 1, 2),
-    ('00000000-0000-0000-0000-000000000300'::uuid, 'courier', 'Nationwide Courier Shipping', 'Courier delivery via partner carrier (DHL/GIGM) outside Lagos.', false, 2, 5)
-ON CONFLICT (id) DO NOTHING;
-
--- 5. Shipping Zones
-INSERT INTO shipping_zones (id, name, regions)
-VALUES
-    ('00000000-0000-0000-0000-000000000010'::uuid, 'Lagos State', ARRAY['Lagos']),
-    ('00000000-0000-0000-0000-000000000020'::uuid, 'Rest of Nigeria (Nationwide)', ARRAY[
-        'Abia', 'Adamawa', 'Akwa Ibom', 'Anambra', 'Bauchi', 'Bayelsa', 'Benue', 'Borno', 'Cross River',
-        'Delta', 'Ebonyi', 'Edo', 'Ekiti', 'Enugu', 'FCT', 'Gombe', 'Imo', 'Jigawa', 'Kaduna', 'Kano',
-        'Katsina', 'Kebbi', 'Kogi', 'Kwara', 'Nasarawa', 'Niger', 'Ogun', 'Ondo', 'Osun', 'Oyo',
-        'Plateau', 'Rivers', 'Sokoto', 'Taraba', 'Yobe', 'Zamfara'
-    ])
-ON CONFLICT (id) DO NOTHING;
-
--- 6. Shipping Rates (Flat rates linked to Zones and Methods)
-INSERT INTO shipping_rates (id, fulfilment_method_id, zone_id, rate_type, flat_amount)
-VALUES
-    -- Lagos Local Delivery flat rate: 2500 NGN (250000 kobo)
-    ('00000000-0000-0000-0000-000000001000'::uuid, '00000000-0000-0000-0000-000000000200'::uuid, '00000000-0000-0000-0000-000000000010'::uuid, 'flat', 250000),
-    -- Nationwide Courier flat rate: 5000 NGN (500000 kobo)
-    ('00000000-0000-0000-0000-000000002000'::uuid, '00000000-0000-0000-0000-000000000300'::uuid, '00000000-0000-0000-0000-000000000020'::uuid, 'flat', 500000)
-ON CONFLICT (id) DO NOTHING;
-
--- 7. Categories
+-- 4. Categories
 INSERT INTO categories (id, name, slug)
 VALUES ('c1a551f1-ca70-4b2a-89a5-aa33bb44cc55'::uuid, 'Apparel & Fashion', 'apparel-fashion')
 ON CONFLICT (id) DO NOTHING;

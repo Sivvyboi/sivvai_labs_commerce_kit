@@ -388,15 +388,15 @@ export function ShippingManager({ initialZones, initialMethods }: ShippingManage
                 <Globe2 size={26} aria-hidden />
               </span>
               <div>
-                <p className="text-sm font-semibold text-[var(--kit-text-primary)]">No shipping zones yet</p>
-                <p className="mt-1 text-sm text-[var(--kit-text-secondary)]">Create your first shipping zone to define deliverable regions and customer delivery rates.</p>
+                <p className="text-sm font-semibold text-[var(--kit-text-primary)]">No shipping zones configured yet</p>
+                <p className="mt-1 text-sm text-[var(--kit-text-secondary)]">Create your first shipping zone to define where your store delivers.</p>
               </div>
               <button
                 type="button"
                 onClick={handleOpenCreateZone}
                 className="inline-flex h-9 items-center gap-2 rounded-[var(--kit-radius-md)] px-4 text-sm font-medium bg-[var(--kit-accent)] text-white hover:opacity-90 transition-opacity"
               >
-                Add Shipping Zone
+                <Plus size={15} /> Add Shipping Zone
               </button>
             </div>
           ) : (
@@ -605,15 +605,15 @@ export function ShippingManager({ initialZones, initialMethods }: ShippingManage
                 <Truck size={26} aria-hidden />
               </span>
               <div>
-                <p className="text-sm font-semibold text-[var(--kit-text-primary)]">No fulfilment methods yet</p>
-                <p className="mt-1 text-sm text-[var(--kit-text-secondary)]">Define shipping and pickup options (Standard Courier, Express Delivery, Store Pickup).</p>
+                <p className="text-sm font-semibold text-[var(--kit-text-primary)]">No fulfilment methods configured yet</p>
+                <p className="mt-1 text-sm text-[var(--kit-text-secondary)]">Create your first fulfilment method to make delivery options available at checkout.</p>
               </div>
               <button
                 type="button"
                 onClick={handleOpenCreateMethod}
                 className="inline-flex h-9 items-center gap-2 rounded-[var(--kit-radius-md)] px-4 text-sm font-medium bg-[var(--kit-accent)] text-white hover:opacity-90 transition-opacity"
               >
-                Add Fulfilment Method
+                <Plus size={15} /> Add Fulfilment Method
               </button>
             </div>
           ) : (

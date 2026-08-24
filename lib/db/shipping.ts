@@ -203,6 +203,17 @@ export async function adminUpdateFulfilmentMethod(
   return data as unknown as FulfilmentMethodRow;
 }
 
+export async function hasFulfilmentMethodCheckoutReferences(methodId: string): Promise<boolean> {
+  const supabase = await createClient();
+  const { count, error } = await supabase
+    .from("checkout_sessions")
+    .select("id", { count: "exact", head: true })
+    .eq("fulfilment_method_id", methodId);
+
+  if (error) return false;
+  return (count ?? 0) > 0;
+}
+
 export async function adminDeleteFulfilmentMethod(id: string): Promise<void> {
   const supabase = await createClient();
   const { error } = await supabase
@@ -210,7 +221,14 @@ export async function adminDeleteFulfilmentMethod(id: string): Promise<void> {
     .delete()
     .eq("id", id);
 
-  if (error) throw error;
+  if (error) {
+    if (error.code === "23503") {
+      throw new Error(
+        "Cannot delete this fulfilment method because it is referenced by existing checkouts. Please disable it instead."
+      );
+    }
+    throw error;
+  }
 }
 
 export async function adminUpsertShippingRate(

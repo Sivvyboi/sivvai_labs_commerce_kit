@@ -125,6 +125,12 @@ export async function updateFulfilmentMethodAdmin(
 }
 
 export async function deleteFulfilmentMethodAdmin(id: string) {
+  const isReferenced = await shippingRepo.hasFulfilmentMethodCheckoutReferences(id);
+  if (isReferenced) {
+    throw new Error(
+      "Cannot delete this fulfilment method because it is referenced by existing checkout records. Please disable it instead."
+    );
+  }
   return shippingRepo.adminDeleteFulfilmentMethod(id);
 }
 
