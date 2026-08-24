@@ -32,28 +32,41 @@ export async function getCustomerByAuthId(authId: string): Promise<CustomerWithA
   return customerRepo.findCustomerByAuthId(authId);
 }
 
-/**
- * Synchronizes customer profile on OAuth login:
- *  1. Checks if customer exists by auth_id (returns or backfills names).
- *  2. Checks if customer exists by email (links auth_id without creating duplicate).
- *  3. Creates new customer record if neither exists.
- */
-export async function syncCustomerOnOAuthLogin(
-  authUser: OAuthUserData
-): Promise<CustomerWithAddresses | null> {
-  const email = authUser.email?.toLowerCase().trim();
-  if (!email) return null;
+export interface SyncCustomerInput {
+  id: string;
+  email?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+  phone?: string | null;
+  user_metadata?: Record<string, unknown> | null;
+}
 
-  const { firstName, lastName } = parseOAuthNames(authUser.user_metadata);
+/**
+ * Synchronizes customer profile across all auth flows (OAuth, Email Signup, Login, Session init):
+ *  1. Checks if customer exists by auth_id (returns or backfills missing fields).
+ *  2. Checks if customer exists by normalized email (links auth_id to existing customer without creating duplicates).
+ *  3. Creates new customer record if neither exists.
+ *  4. Completely idempotent and handles race conditions safely.
+ */
+export async function syncCustomerProfile(
+  input: SyncCustomerInput
+): Promise<CustomerWithAddresses | null> {
+  const email = input.email?.toLowerCase().trim();
+  const meta = input.user_metadata ?? {};
+  const parsed = parseOAuthNames(meta);
+
+  const firstName = input.firstName?.trim() || parsed.firstName || null;
+  const lastName = input.lastName?.trim() || parsed.lastName || null;
+  const phone = input.phone?.trim() || (meta.phone as string)?.trim() || null;
 
   // 1. Check if customer already exists by auth_id
-  let customer = await customerRepo.findCustomerByAuthId(authUser.id);
+  let customer = await customerRepo.findCustomerByAuthId(input.id);
 
   if (customer) {
     const updates: customerRepo.CustomerUpdate = {};
     if (!customer.first_name && firstName) updates.first_name = firstName;
     if (!customer.last_name && lastName) updates.last_name = lastName;
-    if (!customer.phone && authUser.phone) updates.phone = authUser.phone;
+    if (!customer.phone && phone) updates.phone = phone;
 
     if (Object.keys(updates).length > 0) {
       await customerRepo.updateCustomer(customer.id, updates);
@@ -62,32 +75,67 @@ export async function syncCustomerOnOAuthLogin(
     return customer;
   }
 
-  // 2. Check if customer exists by email (e.g. from prior guest checkout or email signup)
-  customer = await customerRepo.findCustomerByEmail(email);
+  // 2. Check if customer exists by normalized email (e.g. from prior guest checkout or unlinked account)
+  if (email) {
+    customer = await customerRepo.findCustomerByEmail(email);
 
-  if (customer) {
-    const updates: customerRepo.CustomerUpdate = {
-      auth_id: authUser.id,
-    };
-    if (!customer.first_name && firstName) updates.first_name = firstName;
-    if (!customer.last_name && lastName) updates.last_name = lastName;
-    if (!customer.phone && authUser.phone) updates.phone = authUser.phone;
+    if (customer) {
+      const updates: customerRepo.CustomerUpdate = {
+        auth_id: input.id,
+      };
+      if (!customer.first_name && firstName) updates.first_name = firstName;
+      if (!customer.last_name && lastName) updates.last_name = lastName;
+      if (!customer.phone && phone) updates.phone = phone;
 
-    await customerRepo.updateCustomer(customer.id, updates);
-    return customerRepo.findCustomerById(customer.id);
+      await customerRepo.updateCustomer(customer.id, updates);
+      return customerRepo.findCustomerById(customer.id);
+    }
   }
 
   // 3. Create fresh customer record
-  const created = await customerRepo.createCustomer({
-    auth_id: authUser.id,
-    email,
-    first_name: firstName,
-    last_name: lastName,
-    phone: authUser.phone || null,
-    status: "active",
-  });
+  if (!email) return null;
 
-  return customerRepo.findCustomerById(created.id);
+  try {
+    const created = await customerRepo.createCustomer({
+      auth_id: input.id,
+      email,
+      first_name: firstName,
+      last_name: lastName,
+      phone,
+      status: "active",
+    });
+
+    return customerRepo.findCustomerById(created.id);
+  } catch (createErr) {
+    // Gracefully handle race condition (e.g. parallel requests with same email)
+    const existing = await customerRepo.findCustomerByEmail(email);
+    if (existing) {
+      const updates: customerRepo.CustomerUpdate = {
+        auth_id: input.id,
+      };
+      if (!existing.first_name && firstName) updates.first_name = firstName;
+      if (!existing.last_name && lastName) updates.last_name = lastName;
+      if (!existing.phone && phone) updates.phone = phone;
+
+      await customerRepo.updateCustomer(existing.id, updates);
+      return customerRepo.findCustomerById(existing.id);
+    }
+    throw createErr;
+  }
+}
+
+/**
+ * Backward-compatible alias for OAuth login and OTP routes.
+ */
+export async function syncCustomerOnOAuthLogin(
+  authUser: OAuthUserData
+): Promise<CustomerWithAddresses | null> {
+  return syncCustomerProfile({
+    id: authUser.id,
+    email: authUser.email,
+    user_metadata: authUser.user_metadata,
+    phone: authUser.phone,
+  });
 }
 
 export async function updateCustomerProfile(

@@ -22,14 +22,15 @@ export function AddressesClient({
   initialAddresses: CustomerAddressRow[];
 }) {
   const router = useRouter();
+  const [prevInitialAddresses, setPrevInitialAddresses] = React.useState(initialAddresses);
   const [addresses, setAddresses] = React.useState<CustomerAddressRow[]>(initialAddresses);
   const [isLoading, setIsLoading] = React.useState(false);
   const { saveAddress, deleteAddress, setDefaultAddress } = useAccount();
 
-  // Keep state in sync if initialAddresses changes (e.g. on router.refresh)
-  React.useEffect(() => {
+  if (initialAddresses !== prevInitialAddresses) {
+    setPrevInitialAddresses(initialAddresses);
     setAddresses(initialAddresses);
-  }, [initialAddresses]);
+  }
 
   const handleSave = async (input: CustomerAddressInput, addressId?: string) => {
     setIsLoading(true);

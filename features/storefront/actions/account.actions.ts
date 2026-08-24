@@ -9,7 +9,6 @@
 import { revalidatePath } from "next/cache";
 import { getCurrentUser } from "@/lib/auth/server-auth";
 import { createClient } from "@/lib/supabase/server";
-import * as customerRepo from "@/lib/db/customers";
 import * as customerService from "@/services/customer-service";
 import * as orderService from "@/services/order-service";
 import { getOrCreateCartAction, mergeCartOnLoginAction } from "./cart.actions";
@@ -84,29 +83,15 @@ export async function signUpAction(input: CustomerSignUpInput) {
 
     const authUser = authData.user;
 
-    // Check if an existing customer record exists by email (e.g. from guest checkout)
-    let customer = await customerRepo.findCustomerByEmail(validated.email);
-
-    if (customer) {
-      // Link existing record to new auth_id
-      customer = (await customerRepo.updateCustomer(customer.id, {
-        auth_id: authUser.id,
-        first_name: validated.firstName,
-        last_name: validated.lastName,
-        phone: validated.phone || customer.phone,
-      })) as unknown as typeof customer;
-    } else {
-      // Create fresh customer record
-      const created = await customerRepo.createCustomer({
-        auth_id: authUser.id,
-        email: validated.email,
-        first_name: validated.firstName,
-        last_name: validated.lastName,
-        phone: validated.phone || null,
-        status: "active",
-      });
-      customer = created as unknown as typeof customer;
-    }
+    // Synchronize customer profile (links existing guest record or creates new)
+    const customer = await customerService.syncCustomerProfile({
+      id: authUser.id,
+      email: validated.email,
+      firstName: validated.firstName,
+      lastName: validated.lastName,
+      phone: validated.phone,
+      user_metadata: authUser.user_metadata,
+    });
 
     // If a session was returned (email auto-confirmed), merge guest cart immediately
     if (authData.session && customer?.id) {
@@ -153,8 +138,13 @@ export async function signInAction(emailOrInput: string | CustomerSignInInput, m
       return { success: false, error: error?.message ?? "Sign-in failed" };
     }
 
-    // Resolve the customer profile for cart merge
-    const customer = await customerService.getCustomerByAuthId(data.user.id);
+    // Resolve/sync the customer profile for cart merge
+    const customer = await customerService.syncCustomerProfile({
+      id: data.user.id,
+      email: data.user.email,
+      phone: data.user.phone,
+      user_metadata: data.user.user_metadata,
+    });
     const customerId = customer?.id;
 
     if (customerId) {
@@ -291,9 +281,13 @@ export async function getCustomerProfileAction() {
     }
 
     let customer = await customerService.getCustomerByAuthId(user.id);
-    if (!customer && user.email) {
-      // Check if existing customer record by email
-      customer = await customerService.getCustomerProfile(user.id).catch(() => null);
+    if (!customer) {
+      customer = await customerService.syncCustomerProfile({
+        id: user.id,
+        email: user.email,
+        phone: user.phone,
+        user_metadata: user.user_metadata,
+      });
     }
 
     if (!customer) {

@@ -1,5 +1,4 @@
 import "server-only";
-import { createClient } from "../supabase/server";
 import { createAdminClient } from "../supabase/admin";
 import type { Database } from "@/types";
 
@@ -12,7 +11,7 @@ export type CustomerAddressInsert = Database["public"]["Tables"]["customer_addre
 export type CustomerWithAddresses = CustomerRow & { addresses: CustomerAddressRow[] };
 
 export async function findCustomerById(id: string): Promise<CustomerWithAddresses | null> {
-  const supabase = await createClient();
+  const supabase = createAdminClient();
   const { data, error } = await supabase
     .from("customers")
     .select("*, addresses:customer_addresses(*)")
@@ -24,11 +23,12 @@ export async function findCustomerById(id: string): Promise<CustomerWithAddresse
 }
 
 export async function findCustomerByEmail(email: string): Promise<CustomerWithAddresses | null> {
-  const supabase = await createClient();
+  const normalizedEmail = email.toLowerCase().trim();
+  const supabase = createAdminClient();
   const { data, error } = await supabase
     .from("customers")
     .select("*, addresses:customer_addresses(*)")
-    .eq("email", email)
+    .eq("email", normalizedEmail)
     .maybeSingle();
 
   if (error || !data) return null;
@@ -37,9 +37,13 @@ export async function findCustomerByEmail(email: string): Promise<CustomerWithAd
 
 export async function createCustomer(data: CustomerInsert): Promise<CustomerRow> {
   const supabase = createAdminClient();
+  const payload = {
+    ...data,
+    email: data.email.toLowerCase().trim(),
+  };
   const { data: customer, error } = await supabase
     .from("customers")
-    .insert(data)
+    .insert(payload)
     .select()
     .single();
 
@@ -51,10 +55,14 @@ export async function updateCustomer(
   id: string,
   data: CustomerUpdate
 ): Promise<CustomerRow> {
-  const supabase = await createClient();
+  const supabase = createAdminClient();
+  const payload = { ...data };
+  if (payload.email) {
+    payload.email = payload.email.toLowerCase().trim();
+  }
   const { data: updated, error } = await supabase
     .from("customers")
-    .update(data)
+    .update(payload)
     .eq("id", id)
     .select()
     .single();
@@ -64,7 +72,7 @@ export async function updateCustomer(
 }
 
 export async function findCustomerByAuthId(authId: string): Promise<CustomerWithAddresses | null> {
-  const supabase = await createClient();
+  const supabase = createAdminClient();
   const { data, error } = await supabase
     .from("customers")
     .select("*, addresses:customer_addresses(*)")
@@ -76,7 +84,7 @@ export async function findCustomerByAuthId(authId: string): Promise<CustomerWith
 }
 
 export async function findCustomerAddresses(customerId: string): Promise<CustomerAddressRow[]> {
-  const supabase = await createClient();
+  const supabase = createAdminClient();
   const { data, error } = await supabase
     .from("customer_addresses")
     .select("*")
@@ -89,7 +97,7 @@ export async function findCustomerAddresses(customerId: string): Promise<Custome
 }
 
 export async function addCustomerAddress(data: CustomerAddressInsert): Promise<CustomerAddressRow> {
-  const supabase = await createClient();
+  const supabase = createAdminClient();
   const { data: address, error } = await supabase
     .from("customer_addresses")
     .insert(data)
@@ -105,7 +113,7 @@ export async function updateCustomerAddress(
   customerId: string,
   data: Partial<CustomerAddressInsert>
 ): Promise<CustomerAddressRow> {
-  const supabase = await createClient();
+  const supabase = createAdminClient();
   const { data: updated, error } = await supabase
     .from("customer_addresses")
     .update(data)
@@ -119,7 +127,7 @@ export async function updateCustomerAddress(
 }
 
 export async function deleteCustomerAddress(id: string, customerId: string): Promise<boolean> {
-  const supabase = await createClient();
+  const supabase = createAdminClient();
   const { error } = await supabase
     .from("customer_addresses")
     .delete()
@@ -134,7 +142,7 @@ export async function setDefaultCustomerAddress(
   addressId: string,
   customerId: string
 ): Promise<CustomerAddressRow> {
-  const supabase = await createClient();
+  const supabase = createAdminClient();
   // 1. Unset existing defaults for this customer
   await supabase
     .from("customer_addresses")
