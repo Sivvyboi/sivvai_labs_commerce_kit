@@ -1,21 +1,20 @@
-import { getCurrentUser } from "@/lib/auth/server-auth";
-import * as customerRepo from "@/lib/db/customers";
+import type { Metadata } from "next";
+import { getCurrentUser, getOrCreateCustomer } from "@/lib/auth/server-auth";
 import { ProfileForm } from "@/components/storefront/account/ProfileForm";
 import { User } from "lucide-react";
 
-export const metadata = {
+export const metadata: Metadata = {
   title: "Edit Profile",
-  description: "Manage your account profile details.",
+  description: "Manage your account name, phone number, and contact info.",
 };
 
 export const revalidate = 0;
 
 export default async function AccountProfilePage() {
   const user = await getCurrentUser();
-  let customer = user ? await customerRepo.findCustomerByAuthId(user.id) : null;
-  if (!customer && user?.email) {
-    customer = await customerRepo.findCustomerByEmail(user.email);
-  }
+  if (!user) return null;
+
+  const customer = await getOrCreateCustomer(user);
 
   return (
     <div className="space-y-6">
@@ -25,19 +24,13 @@ export default async function AccountProfilePage() {
         </div>
         <div>
           <h2 className="text-lg font-bold text-[var(--kit-text-primary)]">Edit Profile</h2>
-          <p className="text-xs text-[var(--kit-muted-fg)]">Update your name and contact info.</p>
+          <p className="text-xs text-[var(--kit-muted-fg)]">
+            Update your name, phone number, and contact details.
+          </p>
         </div>
       </div>
 
-      {customer ? (
-        <ProfileForm customer={customer} />
-      ) : (
-        <div className="p-6 rounded-xl border border-dashed border-[var(--kit-border)] bg-[var(--kit-surface)]/50 text-sm text-center text-[var(--kit-muted-fg)]">
-          <p>
-            No customer profile found. Sign in or enable authentication to manage your profile.
-          </p>
-        </div>
-      )}
+      <ProfileForm customer={customer} />
     </div>
   );
 }

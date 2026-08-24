@@ -49,8 +49,37 @@ export async function signUpAction(input: CustomerSignUpInput) {
       },
     });
 
-    if (authError || !authData.user) {
-      return { success: false, error: authError?.message ?? "Registration failed" };
+    // Supabase returns an "identities" array that is empty when the email already
+    // exists but email confirmation is enabled (it doesn't return an error code).
+    // In that case we surface a friendly "already registered" message.
+    if (!authError && authData.user && authData.user.identities?.length === 0) {
+      return {
+        success: false,
+        error:
+          "This email is already registered. Please try signing in instead.",
+      };
+    }
+
+    if (authError) {
+      // Map known Supabase error codes to friendly messages
+      const msg = authError.message?.toLowerCase() ?? "";
+      if (
+        msg.includes("user already registered") ||
+        msg.includes("already registered") ||
+        msg.includes("email address is already") ||
+        authError.code === "user_already_exists"
+      ) {
+        return {
+          success: false,
+          error:
+            "This email is already registered. Please try signing in instead.",
+        };
+      }
+      return { success: false, error: authError.message ?? "Registration failed" };
+    }
+
+    if (!authData.user) {
+      return { success: false, error: "Registration failed. Please try again." };
     }
 
     const authUser = authData.user;
@@ -98,6 +127,7 @@ export async function signUpAction(input: CustomerSignUpInput) {
     };
   }
 }
+
 
 /**
  * Signs in a customer and immediately merges any active guest cart into

@@ -21,8 +21,16 @@ import {
 export function AccountSidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const { isAuthenticated } = useCustomerAuth();
+  const { user, isAuthenticated } = useCustomerAuth();
   const [isPending, startTransition] = React.useTransition();
+
+  const firstName =
+    (user?.user_metadata?.first_name as string) ||
+    (user?.user_metadata?.given_name as string) ||
+    (user?.user_metadata?.name as string) ||
+    "";
+  const displayName = firstName || (user?.email ? user.email.split("@")[0] : "Customer");
+  const userInitials = (firstName ? firstName[0] : user?.email ? user.email[0] : "U").toUpperCase();
 
   const navItems = [
     { label: "Overview", href: "/account", icon: LayoutDashboard },
@@ -42,7 +50,25 @@ export function AccountSidebar() {
 
   return (
     <aside className="w-full md:w-64 shrink-0">
-      <nav className="flex md:flex-col gap-1 p-2 rounded-xl border border-[var(--kit-border)] bg-[var(--kit-card)] overflow-x-auto scrollbar-none shadow-sm">
+      <div className="flex md:flex-col gap-1 p-2 rounded-xl border border-[var(--kit-border)] bg-[var(--kit-card)] overflow-x-auto scrollbar-none shadow-sm">
+        {/* User preview header (desktop only) */}
+        {isAuthenticated && user && (
+          <div className="hidden md:flex items-center gap-3 p-3 mb-1 border-b border-[var(--kit-border)]">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--kit-accent)] text-[var(--kit-accent-fg)] text-sm font-bold shadow-xs">
+              {userInitials}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-bold text-[var(--kit-text-primary)] truncate">
+                {displayName}
+              </p>
+              <p className="text-[11px] text-[var(--kit-muted-fg)] truncate">
+                {user.email}
+              </p>
+            </div>
+          </div>
+        )}
+
+        <nav className="flex md:flex-col gap-1 w-full">
         {navItems.map((item) => {
           const Icon = item.icon;
           const isActive = pathname === item.href;
@@ -89,7 +115,8 @@ export function AccountSidebar() {
             <span>Sign In</span>
           </Link>
         )}
-      </nav>
+        </nav>
+      </div>
     </aside>
   );
 }

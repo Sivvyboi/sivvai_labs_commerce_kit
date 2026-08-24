@@ -1,12 +1,12 @@
-import { getCurrentUser } from "@/lib/auth/server-auth";
-import * as customerRepo from "@/lib/db/customers";
+import type { Metadata } from "next";
+import { getCurrentUser, getOrCreateCustomer } from "@/lib/auth/server-auth";
 import * as orderRepo from "@/lib/db/orders";
 import { OrdersTable } from "@/components/storefront/account/OrdersTable";
 import { OrderCard } from "@/components/storefront/account/OrderCard";
 import { EmptyOrdersState } from "@/components/storefront/account/EmptyOrdersState";
 import { ShoppingBag } from "lucide-react";
 
-export const metadata = {
+export const metadata: Metadata = {
   title: "Order History",
   description: "View your past orders and track their status.",
 };
@@ -15,12 +15,10 @@ export const revalidate = 0;
 
 export default async function AccountOrdersPage() {
   const user = await getCurrentUser();
-  let customer = user ? await customerRepo.findCustomerByAuthId(user.id) : null;
-  if (!customer && user?.email) {
-    customer = await customerRepo.findCustomerByEmail(user.email);
-  }
+  if (!user) return null;
 
-  const orders = customer ? await orderRepo.findCustomerOrders(customer.id) : [];
+  const customer = await getOrCreateCustomer(user);
+  const orders = await orderRepo.findCustomerOrders(customer.id).catch(() => []);
 
   return (
     <div className="space-y-6">
@@ -31,7 +29,9 @@ export default async function AccountOrdersPage() {
         <div>
           <h2 className="text-lg font-bold text-[var(--kit-text-primary)]">Order History</h2>
           <p className="text-xs text-[var(--kit-muted-fg)]">
-            {orders.length > 0 ? `${orders.length} orders found` : "No orders placed yet."}
+            {orders.length > 0
+              ? `${orders.length} order${orders.length !== 1 ? "s" : ""} found`
+              : "No orders placed yet."}
           </p>
         </div>
       </div>

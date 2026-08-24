@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import type { CustomerRow } from "@/lib/db/customers";
 import { useAccount } from "@/features/storefront/hooks/useAccount";
 import { User, Phone, Mail, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
@@ -10,6 +11,7 @@ interface ProfileFormProps {
 }
 
 export function ProfileForm({ customer }: ProfileFormProps) {
+  const router = useRouter();
   const { updateProfile, isLoading } = useAccount();
   const [firstName, setFirstName] = useState(customer.first_name || "");
   const [lastName, setLastName] = useState(customer.last_name || "");
@@ -30,6 +32,7 @@ export function ProfileForm({ customer }: ProfileFormProps) {
 
     if (res.success) {
       setSuccessMessage("Profile updated successfully!");
+      router.refresh();
     } else {
       setErrorMessage(res.error || "Failed to update profile");
     }

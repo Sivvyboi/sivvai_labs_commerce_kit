@@ -1,17 +1,21 @@
-"use client";
+import type { Metadata } from "next";
+import { getCurrentUser, getOrCreateCustomer } from "@/lib/auth/server-auth";
+import { AddressesClient } from "@/components/storefront/account/AddressesClient";
+import { MapPin } from "lucide-react";
 
-import { useEffect } from "react";
-import { AddressBook } from "@/components/storefront/account/AddressBook";
-import { useAccount } from "@/features/storefront/hooks/useAccount";
-import { MapPin, Loader2 } from "lucide-react";
+export const metadata: Metadata = {
+  title: "My Addresses",
+  description: "Manage your saved delivery addresses.",
+};
 
-export default function AccountAddressesPage() {
-  const { addresses, isLoading, fetchAddresses, saveAddress, deleteAddress, setDefaultAddress } =
-    useAccount();
+export const revalidate = 0;
 
-  useEffect(() => {
-    fetchAddresses();
-  }, [fetchAddresses]);
+export default async function AccountAddressesPage() {
+  const user = await getCurrentUser();
+  if (!user) return null;
+
+  const customer = await getOrCreateCustomer(user);
+  const addresses = customer.addresses ?? [];
 
   return (
     <div className="space-y-6">
@@ -27,19 +31,7 @@ export default function AccountAddressesPage() {
         </div>
       </div>
 
-      {isLoading && addresses.length === 0 ? (
-        <div className="flex justify-center py-12">
-          <Loader2 className="h-6 w-6 animate-spin text-[var(--kit-accent)]" />
-        </div>
-      ) : (
-        <AddressBook
-          addresses={addresses}
-          onSaveAddress={saveAddress}
-          onDeleteAddress={deleteAddress}
-          onSetDefaultAddress={setDefaultAddress}
-          isLoading={isLoading}
-        />
-      )}
+      <AddressesClient initialAddresses={addresses} />
     </div>
   );
 }
