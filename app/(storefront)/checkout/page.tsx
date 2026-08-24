@@ -10,8 +10,8 @@
 
 import { Suspense } from "react";
 import type { Metadata } from "next";
-import { cookies } from "next/headers";
-import * as cartRepo from "@/lib/db/carts";
+import { getCartToken } from "@/lib/auth/cart-token";
+import * as cartService from "@/services/cart-service";
 import { siteConfig } from "@/config/site";
 import { Breadcrumb } from "@/components/shared/Breadcrumb";
 import { EmptyState } from "@/components/shared/EmptyState";
@@ -28,15 +28,9 @@ export const metadata: Metadata = {
 };
 
 export default async function CheckoutPage() {
-  const cookieStore = await cookies();
-  const cartId = cookieStore.get("cart_id")?.value;
-
-  let cart = null;
-  if (cartId) {
-    cart = await cartRepo.findCartById(cartId);
-  }
-
-  const hasItems = cart && cart.items && cart.items.length > 0;
+  const cartToken = await getCartToken();
+  const cart = cartToken ? await cartService.getCartByToken(cartToken) : null;
+  const hasItems = Boolean(cart && cart.items && cart.items.length > 0);
 
   return (
     <div className="mx-auto max-w-screen-xl px-4 py-6 sm:px-6 lg:px-8 space-y-6">
