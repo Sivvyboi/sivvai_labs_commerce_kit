@@ -5,6 +5,8 @@ export const InitiateCheckoutSchema = z.object({
   email: z.string().email("Valid email required"),
   fullName: z.string().min(1, "Full name required"),
   phone: z.string().optional(),
+  savedAddressId: z.string().uuid().optional(),
+  saveAddressToAccount: z.boolean().optional(),
   shippingAddress: z.object({
     addressLine1: z.string().min(1, "Street address required"),
     addressLine2: z.string().optional(),

@@ -37,17 +37,52 @@ export async function initiateCheckout(input: InitiateCheckoutInput) {
     throw new ValidationError("Failed to create or retrieve customer for checkout");
   }
 
-  // 3. Calculate shipping if a fulfilment method is specified
+  // 3. Resolve and verify authoritative shipping address snapshot
+  let shippingAddressSnapshot = input.shippingAddress;
+
+  if (input.savedAddressId) {
+    const savedAddresses = await customerRepo.findCustomerAddresses(customer.id);
+    const matchedAddress = savedAddresses.find((a) => a.id === input.savedAddressId);
+    if (!matchedAddress) {
+      throw new ValidationError("Selected address not found or unauthorized");
+    }
+
+    shippingAddressSnapshot = {
+      addressLine1: matchedAddress.street_line_1,
+      addressLine2: matchedAddress.street_line_2 || undefined,
+      city: matchedAddress.city,
+      state: matchedAddress.state,
+      country: matchedAddress.country || "NG",
+    };
+  } else if (input.saveAddressToAccount && customer) {
+    // Save new address to customer address book if requested
+    try {
+      await customerRepo.addCustomerAddress({
+        customer_id: customer.id,
+        label: "Delivery",
+        street_line_1: input.shippingAddress.addressLine1,
+        street_line_2: input.shippingAddress.addressLine2 || null,
+        city: input.shippingAddress.city,
+        state: input.shippingAddress.state,
+        country: input.shippingAddress.country || "NG",
+        is_default: false,
+      });
+    } catch {
+      // Non-fatal if address book persistence encounters an issue during checkout
+    }
+  }
+
+  // 4. Calculate shipping if a fulfilment method is specified
   let shippingTotal = 0;
   if (input.shippingMethodId) {
     shippingTotal = await shippingService.calculateShippingRate(
       input.shippingMethodId,
       cart.subtotal,
-      input.shippingAddress?.state
+      shippingAddressSnapshot.state
     );
   }
 
-  // 4. Validate promo code if provided
+  // 5. Validate promo code if provided
   let discountTotal = 0;
   if (input.promoCode) {
     const promoResult = await promotionService.validateAndApplyPromoCode(
@@ -59,14 +94,14 @@ export async function initiateCheckout(input: InitiateCheckoutInput) {
 
   const grandTotal = Math.max(0, cart.subtotal + shippingTotal - discountTotal);
 
-  // 5. Create checkout_session with locked totals
+  // 6. Create checkout_session with locked totals & verified snapshot
   const session = await checkoutRepo.createCheckoutSession({
     customer_id: customer.id,
     cart_id: cart.id,
     guest_contact: null,
     payment_method: null,
     idempotency_key: null,
-    shipping_address: input.shippingAddress as Json,
+    shipping_address: shippingAddressSnapshot as Json,
     fulfilment_method_id: input.shippingMethodId ?? null,
     promo_code: input.promoCode ?? null,
     subtotal: cart.subtotal,

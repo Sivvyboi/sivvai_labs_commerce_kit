@@ -27,11 +27,22 @@ import { OrderSummary } from "@/components/storefront/checkout/OrderSummary";
 import { PlaceOrderButton } from "@/components/storefront/checkout/PlaceOrderButton";
 import { ArrowLeft, ArrowRight, AlertTriangle } from "lucide-react";
 
-export function CheckoutClient() {
+import type { CustomerWithAddresses } from "@/lib/db/customers";
+import { SavedAddressSelector } from "@/components/storefront/checkout/SavedAddressSelector";
+
+export interface CheckoutClientProps {
+  customer?: CustomerWithAddresses | null;
+}
+
+export function CheckoutClient({ customer }: CheckoutClientProps) {
   const {
     step,
     contact,
     address,
+    addressMode,
+    selectedAddressId,
+    savedAddresses,
+    saveAddressToAccount,
     shippingMethodId,
     shippingTotal,
     promoCode,
@@ -46,12 +57,15 @@ export function CheckoutClient() {
     previousStep,
     updateContact,
     updateAddress,
+    selectSavedAddress,
+    selectNewAddress,
+    setSaveAddressToAccount,
     selectShippingMethod,
     applyCoupon,
     removeCoupon,
     setPaymentProvider,
     submitCheckout,
-  } = useCheckout();
+  } = useCheckout({ customer });
 
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
@@ -63,6 +77,11 @@ export function CheckoutClient() {
     if (!contact.email.trim() || !contact.email.includes("@")) {
       errs.email = "Valid email address is required";
     }
+
+    if (addressMode === "saved" && !selectedAddressId) {
+      errs.address = "Please select a delivery address";
+    }
+
     if (!address.addressLine1.trim()) errs.addressLine1 = "Street address is required";
     if (!address.city.trim()) errs.city = "City is required";
     if (!address.state.trim()) errs.state = "State/Region is required";
@@ -111,13 +130,36 @@ export function CheckoutClient() {
               contact={contact}
               onChange={updateContact}
               errors={formErrors}
+              isLoggedIn={Boolean(customer)}
             />
 
-            <ShippingAddressForm
-              address={address}
-              onChange={updateAddress}
-              errors={formErrors}
-            />
+            {/* Saved Address Selector for Logged-In Customers with Addresses */}
+            {customer && savedAddresses.length > 0 && (
+              <SavedAddressSelector
+                addresses={savedAddresses}
+                selectedAddressId={selectedAddressId}
+                mode={addressMode}
+                onSelectAddress={selectSavedAddress}
+                onSelectNewAddress={selectNewAddress}
+              />
+            )}
+
+            {formErrors.address && (
+              <p className="text-xs text-red-500 font-medium">{formErrors.address}</p>
+            )}
+
+            {/* New Shipping Address Form (Guests, customers without saved addresses, or "Use new address" mode) */}
+            {(!customer || savedAddresses.length === 0 || addressMode === "new") && (
+              <ShippingAddressForm
+                address={address}
+                onChange={updateAddress}
+                errors={formErrors}
+                showSaveOption={Boolean(customer)}
+                saveToAccount={saveAddressToAccount}
+                onSaveToAccountChange={setSaveAddressToAccount}
+                hideHeading={Boolean(customer && savedAddresses.length > 0)}
+              />
+            )}
 
             <div className="pt-4 flex justify-end">
               <button

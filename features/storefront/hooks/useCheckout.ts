@@ -24,6 +24,8 @@ import {
 } from "@/features/storefront/actions/checkout.actions";
 import type { InitiateCheckoutInput } from "@/lib/validation";
 
+import type { CustomerWithAddresses } from "@/lib/db/customers";
+
 export type CheckoutStep = 1 | 2 | 3 | 4;
 
 export interface ContactInfo {
@@ -53,8 +55,15 @@ function readDraft() {
   }
 }
 
-export function useCheckout() {
+export function useCheckout(options?: { customer?: CustomerWithAddresses | null }) {
   const router = useRouter();
+  const customer = options?.customer ?? null;
+  const savedAddresses = useMemo(() => customer?.addresses ?? [], [customer]);
+  const defaultAddress = useMemo(
+    () => savedAddresses.find((a) => a.is_default) ?? savedAddresses[0] ?? null,
+    [savedAddresses]
+  );
+
   const { cart, subtotal, discountAmount: cartDiscount, appliedCoupon: cartCoupon } = useCart();
 
   // Lazy initializers: read persisted draft once on mount (no setState-in-effect needed)
@@ -63,13 +72,61 @@ export function useCheckout() {
     const s = d?.step;
     return s && [1, 2, 3, 4].includes(s as number) ? (s as CheckoutStep) : 1;
   });
+
+  const [addressMode, setAddressMode] = useState<"saved" | "new">(() => {
+    const d = readDraft();
+    if (d?.addressMode === "saved" || d?.addressMode === "new") {
+      return d.addressMode;
+    }
+    return savedAddresses.length > 0 ? "saved" : "new";
+  });
+
+  const [selectedAddressId, setSelectedAddressId] = useState<string | null>(() => {
+    const d = readDraft();
+    if (typeof d?.selectedAddressId === "string" && savedAddresses.some((a) => a.id === d.selectedAddressId)) {
+      return d.selectedAddressId;
+    }
+    return defaultAddress?.id ?? null;
+  });
+
+  const [saveAddressToAccount, setSaveAddressToAccount] = useState<boolean>(() => {
+    const d = readDraft();
+    return typeof d?.saveAddressToAccount === "boolean" ? d.saveAddressToAccount : false;
+  });
+
   const [contact, setContact] = useState<ContactInfo>(() => {
     const d = readDraft();
-    return (d?.contact as ContactInfo) ?? { fullName: "", email: "", phone: "" };
+    if (d?.contact && typeof d.contact === "object") {
+      const c = d.contact as ContactInfo;
+      if (c.email || c.fullName) return c;
+    }
+    if (customer) {
+      const fullName = `${customer.first_name || ""} ${customer.last_name || ""}`.trim();
+      return {
+        fullName: fullName || "",
+        email: customer.email || "",
+        phone: customer.phone || "",
+      };
+    }
+    return { fullName: "", email: "", phone: "" };
   });
+
   const [address, setAddress] = useState<ShippingAddressInfo>(() => {
     const d = readDraft();
-    return (d?.address as ShippingAddressInfo) ?? {
+    if (d?.address && typeof d.address === "object") {
+      const a = d.address as ShippingAddressInfo;
+      if (a.addressLine1 || a.city) return a;
+    }
+    if (defaultAddress) {
+      return {
+        addressLine1: defaultAddress.street_line_1,
+        addressLine2: defaultAddress.street_line_2 || "",
+        city: defaultAddress.city,
+        state: defaultAddress.state,
+        country: defaultAddress.country || "NG",
+      };
+    }
+    return {
       addressLine1: "",
       addressLine2: "",
       city: "",
@@ -77,6 +134,7 @@ export function useCheckout() {
       country: "NG",
     };
   });
+
   const [shippingMethodId, setShippingMethodId] = useState<string | null>(() => {
     const d = readDraft();
     return typeof d?.shippingMethodId === "string" ? d.shippingMethodId : null;
@@ -105,13 +163,15 @@ export function useCheckout() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-
   // Save draft state to localStorage on update
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
       const draft = {
         step,
+        addressMode,
+        selectedAddressId,
+        saveAddressToAccount,
         contact,
         address,
         shippingMethodId,
@@ -127,6 +187,9 @@ export function useCheckout() {
     }
   }, [
     step,
+    addressMode,
+    selectedAddressId,
+    saveAddressToAccount,
     contact,
     address,
     shippingMethodId,
@@ -165,6 +228,39 @@ export function useCheckout() {
 
   const updateAddress = useCallback((addr: Partial<ShippingAddressInfo>) => {
     setAddress((prev) => ({ ...prev, ...addr }));
+  }, []);
+
+  // Address Mode Handlers
+  const selectSavedAddress = useCallback(
+    (addressId: string) => {
+      const target = savedAddresses.find((a) => a.id === addressId);
+      if (!target) return;
+
+      setAddressMode("saved");
+      setSelectedAddressId(addressId);
+      setAddress({
+        addressLine1: target.street_line_1,
+        addressLine2: target.street_line_2 || "",
+        city: target.city,
+        state: target.state,
+        country: target.country || "NG",
+      });
+      setErrorMessage(null);
+    },
+    [savedAddresses]
+  );
+
+  const selectNewAddress = useCallback(() => {
+    setAddressMode("new");
+    setSelectedAddressId(null);
+    setAddress({
+      addressLine1: "",
+      addressLine2: "",
+      city: "",
+      state: "",
+      country: "NG",
+    });
+    setErrorMessage(null);
   }, []);
 
   // Shipping Selection & Recalculation
@@ -222,6 +318,8 @@ export function useCheckout() {
         email: contact.email,
         fullName: contact.fullName,
         phone: contact.phone || undefined,
+        savedAddressId: addressMode === "saved" && selectedAddressId ? selectedAddressId : undefined,
+        saveAddressToAccount: addressMode === "new" ? saveAddressToAccount : undefined,
         shippingAddress: {
           addressLine1: address.addressLine1,
           addressLine2: address.addressLine2 || undefined,
@@ -273,12 +371,16 @@ export function useCheckout() {
     } finally {
       setIsSubmitting(false);
     }
-  }, [cart, contact, address, shippingMethodId, promoCode, paymentProvider, router]);
+  }, [cart, contact, address, addressMode, selectedAddressId, saveAddressToAccount, shippingMethodId, promoCode, paymentProvider, router]);
 
   return {
     step,
     contact,
     address,
+    addressMode,
+    selectedAddressId,
+    savedAddresses,
+    saveAddressToAccount,
     shippingMethodId,
     shippingTotal,
     promoCode,
@@ -294,6 +396,9 @@ export function useCheckout() {
     previousStep,
     updateContact,
     updateAddress,
+    selectSavedAddress,
+    selectNewAddress,
+    setSaveAddressToAccount,
     selectShippingMethod,
     applyCoupon,
     removeCoupon,

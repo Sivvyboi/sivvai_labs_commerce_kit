@@ -14,6 +14,10 @@ export interface ShippingAddressFormProps {
   address: ShippingAddressInfo;
   onChange: (addr: Partial<ShippingAddressInfo>) => void;
   errors?: Record<string, string>;
+  showSaveOption?: boolean;
+  saveToAccount?: boolean;
+  onSaveToAccountChange?: (save: boolean) => void;
+  hideHeading?: boolean;
   className?: string;
 }
 
@@ -21,13 +25,19 @@ export function ShippingAddressForm({
   address,
   onChange,
   errors = {},
+  showSaveOption = false,
+  saveToAccount = false,
+  onSaveToAccountChange,
+  hideHeading = false,
   className,
 }: ShippingAddressFormProps) {
   return (
-    <div className={cn("space-y-4 pt-4 border-t border-[var(--kit-border)]", className)}>
-      <h2 className="text-base font-bold text-[var(--kit-text-primary)]">
-        Shipping Address
-      </h2>
+    <div className={cn("space-y-4", !hideHeading && "pt-4 border-t border-[var(--kit-border)]", className)}>
+      {!hideHeading && (
+        <h2 className="text-base font-bold text-[var(--kit-text-primary)]">
+          Shipping Address
+        </h2>
+      )}
 
       {/* Street Address */}
       <div className="space-y-1.5">
@@ -156,6 +166,19 @@ export function ShippingAddressForm({
           </select>
         </div>
       </div>
+
+      {/* Save Address Option for Logged-In Customers */}
+      {showSaveOption && onSaveToAccountChange && (
+        <label className="flex items-center gap-2.5 pt-2 cursor-pointer select-none text-xs text-[var(--kit-text-primary)]">
+          <input
+            type="checkbox"
+            checked={saveToAccount}
+            onChange={(e) => onSaveToAccountChange(e.target.checked)}
+            className="h-4 w-4 rounded border-[var(--kit-border)] text-[var(--kit-accent)] focus:ring-[var(--kit-accent)]"
+          />
+          <span>Save this address to my account for future orders</span>
+        </label>
+      )}
     </div>
   );
 }

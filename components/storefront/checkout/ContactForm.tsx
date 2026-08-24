@@ -14,6 +14,7 @@ export interface ContactFormProps {
   contact: ContactInfo;
   onChange: (info: Partial<ContactInfo>) => void;
   errors?: Record<string, string>;
+  isLoggedIn?: boolean;
   className?: string;
 }
 
@@ -21,13 +22,21 @@ export function ContactForm({
   contact,
   onChange,
   errors = {},
+  isLoggedIn = false,
   className,
 }: ContactFormProps) {
   return (
     <div className={cn("space-y-4", className)}>
-      <h2 className="text-base font-bold text-[var(--kit-text-primary)]">
-        Contact Information
-      </h2>
+      <div className="flex items-center justify-between">
+        <h2 className="text-base font-bold text-[var(--kit-text-primary)]">
+          Contact Information
+        </h2>
+        {isLoggedIn && (
+          <span className="text-[11px] text-[var(--kit-accent)] font-semibold bg-[var(--kit-accent)]/10 px-2 py-0.5 rounded-full">
+            Logged In
+          </span>
+        )}
+      </div>
 
       {/* Full Name */}
       <div className="space-y-1.5">

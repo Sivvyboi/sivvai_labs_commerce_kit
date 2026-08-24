@@ -12,12 +12,14 @@ import { Suspense } from "react";
 import type { Metadata } from "next";
 import { getCartToken } from "@/lib/auth/cart-token";
 import * as cartService from "@/services/cart-service";
+import { getCurrentUser, getOrCreateCustomer } from "@/lib/auth/server-auth";
 import { siteConfig } from "@/config/site";
 import { Breadcrumb } from "@/components/shared/Breadcrumb";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { CheckoutClient } from "./CheckoutClient";
 import { ROUTES } from "@/constants/routes";
 import { ShoppingBag } from "lucide-react";
+import type { CustomerWithAddresses } from "@/lib/db/customers";
 
 export const dynamic = "force-dynamic";
 
@@ -31,6 +33,16 @@ export default async function CheckoutPage() {
   const cartToken = await getCartToken();
   const cart = cartToken ? await cartService.getCartByToken(cartToken) : null;
   const hasItems = Boolean(cart && cart.items && cart.items.length > 0);
+
+  let customer: CustomerWithAddresses | null = null;
+  try {
+    const user = await getCurrentUser();
+    if (user) {
+      customer = await getOrCreateCustomer(user);
+    }
+  } catch {
+    customer = null;
+  }
 
   return (
     <div className="mx-auto max-w-screen-xl px-4 py-6 sm:px-6 lg:px-8 space-y-6">
@@ -68,7 +80,7 @@ export default async function CheckoutPage() {
         </div>
       ) : (
         <Suspense fallback={<CheckoutLoadingPlaceholder />}>
-          <CheckoutClient />
+          <CheckoutClient customer={customer} />
         </Suspense>
       )}
     </div>
