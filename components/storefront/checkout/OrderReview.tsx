@@ -5,9 +5,11 @@
  *
  * Client Component. Step 3 Order Review Panel.
  * Summarizes customer contact details, delivery address, selected shipping method,
- * and cart line items before advancing to payment initiation.
+ * and cart line items (with product images, SKU/variant attributes, and correct major-unit pricing)
+ * before advancing to payment initiation.
  */
 
+import Image from "next/image";
 import type { ContactInfo, ShippingAddressInfo, CheckoutStep } from "@/features/storefront/hooks/useCheckout";
 import type { ResolvedShippingOption } from "@/services/shipping-service";
 import { useCart } from "@/features/storefront/hooks/useCart";
@@ -143,27 +145,56 @@ export function OrderReview({
         <div className="divide-y divide-[var(--kit-border)] rounded-2xl border border-[var(--kit-border)] bg-[var(--kit-card)] px-4 overflow-hidden">
           {items.map((item) => {
             const product = item.variant?.product;
+            const productName = product?.name ?? "Product Item";
+            const variantSku = item.variant?.sku;
+
+            // Resolve product primary image or first available image
+            const imageUrl =
+              product?.images?.find((img) => img.is_primary)?.url ??
+              product?.images?.[0]?.url ??
+              null;
+
+            // unit_price_snapshot is stored in minor units (kobo/cents), convert to major units for Price component
+            const unitPriceMajor = (Number(item.unit_price_snapshot ?? 0)) / 100;
+            const lineTotalMajor = unitPriceMajor * item.quantity;
 
             return (
               <div key={item.id} className="py-3 flex items-center gap-3">
-                {/* Thumbnail placeholder */}
-                <div className="relative h-12 w-12 rounded-xl bg-[var(--kit-surface)] border border-[var(--kit-border)] overflow-hidden shrink-0 flex items-center justify-center text-[var(--kit-muted-fg)]">
-                  <ShoppingBag className="h-5 w-5 opacity-30" />
+                {/* Thumbnail Image */}
+                <div className="relative h-12 w-12 rounded-xl bg-[var(--kit-surface)] border border-[var(--kit-border)] overflow-hidden shrink-0">
+                  {imageUrl ? (
+                    <Image
+                      src={imageUrl}
+                      alt={productName}
+                      fill
+                      sizes="48px"
+                      className="object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center text-[var(--kit-muted-fg)]">
+                      <ShoppingBag className="h-5 w-5 opacity-30" />
+                    </div>
+                  )}
                 </div>
 
                 {/* Details */}
                 <div className="flex-1 min-w-0">
                   <p className="text-xs sm:text-sm font-semibold text-[var(--kit-text-primary)] truncate">
-                    {product?.name ?? "Product"}
+                    {productName}
                   </p>
+                  {variantSku && (
+                    <p className="text-[10px] text-[var(--kit-muted-fg)] truncate">
+                      SKU: {variantSku}
+                    </p>
+                  )}
                   <p className="text-[11px] text-[var(--kit-muted-fg)]">
-                    Qty: {item.quantity} × <Price amount={item.unit_price_snapshot} size="sm" />
+                    Qty: {item.quantity} × <Price amount={unitPriceMajor} size="sm" />
                   </p>
                 </div>
 
                 {/* Line Total */}
                 <div className="text-right text-xs sm:text-sm font-bold text-[var(--kit-text-primary)]">
-                  <Price amount={item.unit_price_snapshot * item.quantity} size="sm" />
+                  <Price amount={lineTotalMajor} size="sm" />
                 </div>
               </div>
             );

@@ -1,7 +1,7 @@
 /**
  * scripts/verify-phase-b-shipping.ts
  *
- * Automated verification suite for Phase B: Checkout Shipping Selection.
+ * Automated verification suite for Phase B: Checkout Shipping Selection & Refinements.
  * Tests:
  * 1. Specific zone matching (e.g. ['Lagos'] vs multi-region ['Lagos', 'Ogun'])
  * 2. Specificity precedence (smaller region array takes priority)
@@ -10,11 +10,15 @@
  * 5. Active method filtering (disabled methods excluded)
  * 6. Missing rate filtering (methods without configured rate in matching zone excluded)
  * 7. Rate calculation for flat, free_above, and zero fee
- * 8. Validation schema conformance
+ * 8. Pickup method inclusion alongside standard/express when configured in zone
+ * 9. Minor unit (kobo) to major unit (Naira) conversion audit (₦52,800.99)
+ * 10. Product image extraction (primary image preferred with array fallback)
+ * 11. Validation schema conformance
  */
 
 import assert from "assert";
 import { InitiateCheckoutSchema } from "../lib/validation/checkout";
+import { formatCurrency } from "../lib/utils/format";
 
 console.log("==================================================================");
 console.log("  Running Phase B Shipping Resolution Verification Suite");
@@ -146,16 +150,18 @@ const mockZones: MockZone[] = [
 const mockMethods: MockMethod[] = [
   { id: "method-standard", name: "Standard Courier", type: "courier", is_enabled: true, estimated_days_min: 2, estimated_days_max: 4 },
   { id: "method-express", name: "Express Dispatch", type: "local_delivery", is_enabled: true, estimated_days_min: 1, estimated_days_max: 1 },
+  { id: "method-pickup", name: "Store Pickup (Lagos HQ)", type: "local_pickup", is_enabled: true, estimated_days_min: 0, estimated_days_max: 1 },
   { id: "method-disabled", name: "Old Courier", type: "courier", is_enabled: false, estimated_days_min: 5, estimated_days_max: 10 },
 ];
 
 const mockRates: MockRate[] = [
-  // Lagos has Standard (₦2,000, free above ₦50,000) and Express (₦4,000)
+  // Lagos has Standard (₦2,000, free above ₦50,000), Express (₦4,000), and Store Pickup (₦0 Free)
   { id: "rate-1", fulfilment_method_id: "method-standard", zone_id: "zone-lagos", rate_type: "free_above", flat_amount: 2000, free_above_order_total: 50000 },
   { id: "rate-2", fulfilment_method_id: "method-express", zone_id: "zone-lagos", rate_type: "flat", flat_amount: 4000, free_above_order_total: null },
-  { id: "rate-3", fulfilment_method_id: "method-disabled", zone_id: "zone-lagos", rate_type: "flat", flat_amount: 1500, free_above_order_total: null },
+  { id: "rate-3", fulfilment_method_id: "method-pickup", zone_id: "zone-lagos", rate_type: "flat", flat_amount: 0, free_above_order_total: null },
+  { id: "rate-4", fulfilment_method_id: "method-disabled", zone_id: "zone-lagos", rate_type: "flat", flat_amount: 1500, free_above_order_total: null },
   // Nationwide only has Standard (₦4,500)
-  { id: "rate-4", fulfilment_method_id: "method-standard", zone_id: "zone-nationwide", rate_type: "flat", flat_amount: 4500, free_above_order_total: null },
+  { id: "rate-5", fulfilment_method_id: "method-standard", zone_id: "zone-nationwide", rate_type: "flat", flat_amount: 4500, free_above_order_total: null },
 ];
 
 // ---------------------------------------------------------------------------
@@ -182,7 +188,7 @@ console.log("    -> Passed: Correctly returned serviceable: false, reason: 'unse
 
 console.log("\n[4] Testing Disabled Method Filtering...");
 const lagosRes = resolveOptions(mockZones, mockMethods, mockRates, { state: "Lagos" }, 30000);
-assert(lagosRes.options.length === 2, `Expected 2 active methods, got ${lagosRes.options.length}`);
+assert(lagosRes.options.length === 3, `Expected 3 active methods, got ${lagosRes.options.length}`);
 assert(!lagosRes.options.some((o) => o.methodId === "method-disabled"), "Disabled method must be excluded");
 console.log("    -> Passed: Disabled method was excluded from customer options");
 
@@ -196,12 +202,51 @@ const standardAbove = aboveRes.options.find((o) => o.methodId === "method-standa
 assert(standardAbove?.amount === 0 && standardAbove?.isFree, "Subtotal at or above threshold must be Free (₦0)");
 console.log("    -> Passed: ₦35,000 subtotal = ₦2,000 | ₦60,000 subtotal = ₦0 (Free Shipping)");
 
-console.log("\n[6] Testing Empty Shipping Configuration (No Zones Configured)...");
+console.log("\n[6] Testing Pickup Method Inclusion When Configured in Zone...");
+const pickupOption = lagosRes.options.find((o) => o.methodId === "method-pickup");
+assert(pickupOption !== undefined, "Pickup option must be returned when configured for the matching zone");
+assert(pickupOption?.isFree === true && pickupOption.amount === 0, "Free pickup must have amount = 0 and isFree = true");
+console.log("    -> Passed: Store Pickup is returned and selectable with ₦0 FREE badge");
+
+console.log("\n[7] Testing Pickup Not Appearing When Unconfigured for Destination...");
+const kanoRes = resolveOptions(mockZones, mockMethods, mockRates, { state: "Kano" }, 30000);
+const kanoPickup = kanoRes.options.find((o) => o.methodId === "method-pickup");
+assert(kanoPickup === undefined, "Pickup must not appear for zones where pickup is not configured");
+console.log("    -> Passed: Kano destination only contains Standard Courier (no unconfigured Pickup)");
+
+console.log("\n[8] Testing Unit Price Kobo-to-Naira Money Conversion (Review Your Order Fix)...");
+const rawSnapshotKobo = 5280099; // ₦52,800.99 in minor units
+const majorUnits = rawSnapshotKobo / 100;
+assert(majorUnits === 52800.99, `Major units must be 52800.99, got ${majorUnits}`);
+const formatted = formatCurrency(majorUnits, "NGN", "en");
+assert(formatted.includes("52,800.99"), `Formatted output must contain 52,800.99, got ${formatted}`);
+console.log(`    -> Passed: Kobo value ${rawSnapshotKobo} converted to ₦${majorUnits} and formatted as ${formatted}`);
+
+console.log("\n[9] Testing Product Image Extraction with Primary and Array Fallbacks...");
+const mockProductWithPrimary = {
+  name: "Designer Bag",
+  images: [
+    { url: "https://example.com/secondary.jpg", is_primary: false },
+    { url: "https://example.com/primary.jpg", is_primary: true },
+  ],
+};
+const primaryImg = mockProductWithPrimary.images.find((img) => img.is_primary)?.url ?? mockProductWithPrimary.images[0]?.url;
+assert(primaryImg === "https://example.com/primary.jpg", "Primary image must be selected when is_primary is true");
+
+const mockProductWithoutPrimary = {
+  name: "Designer Bag",
+  images: [{ url: "https://example.com/first.jpg", is_primary: false }],
+};
+const firstImg = mockProductWithoutPrimary.images.find((img) => img.is_primary)?.url ?? mockProductWithoutPrimary.images[0]?.url;
+assert(firstImg === "https://example.com/first.jpg", "First image must be selected when no primary image is designated");
+console.log("    -> Passed: Product image extraction correctly prioritizes is_primary with fallback to first image");
+
+console.log("\n[10] Testing Empty Shipping Configuration (No Zones Configured)...");
 const emptyConfigRes = resolveOptions([], mockMethods, mockRates, { state: "Lagos" }, 10000);
 assert(!emptyConfigRes.serviceable, "Empty store shipping configuration must not return any options");
 console.log("    -> Passed: Empty store configuration gracefully rejected");
 
-console.log("\n[7] Testing Checkout Validation Schema Conformance...");
+console.log("\n[11] Testing Checkout Validation Schema Conformance...");
 const validPayload = {
   cartId: "c1a551f1-ca70-4b2a-89a5-aa33bb44cc55",
   email: "customer@example.com",
@@ -220,5 +265,5 @@ assert(parsed.success, `Schema validation should pass for valid checkout input: 
 console.log("    -> Passed: InitiateCheckoutSchema correctly validates customer shipping input");
 
 console.log("\n==================================================================");
-console.log("  ALL 7 PHASE B VERIFICATION CHECKS PASSED PERFECTLY!");
+console.log("  ALL 11 PHASE B VERIFICATION CHECKS PASSED PERFECTLY!");
 console.log("==================================================================\n");

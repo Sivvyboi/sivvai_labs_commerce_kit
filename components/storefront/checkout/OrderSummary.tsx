@@ -7,6 +7,7 @@
  * subtotal, shipping cost, discount, and grand total.
  */
 
+import Image from "next/image";
 import { useCart } from "@/features/storefront/hooks/useCart";
 import { Price } from "@/components/shared/Price";
 import { ShoppingBag, ChevronDown, ChevronUp } from "lucide-react";
@@ -69,29 +70,49 @@ export function OrderSummary({
         )}
       >
         {items.map((item) => {
-            const product = item.variant?.product;
+          const product = item.variant?.product;
+          const productName = product?.name ?? "Product";
+          const imageUrl =
+            product?.images?.find((img) => img.is_primary)?.url ??
+            product?.images?.[0]?.url ??
+            null;
 
-            return (
-              <div key={item.id} className="pt-3 first:pt-0 flex items-center gap-3">
-                <div className="relative h-12 w-12 rounded-xl bg-[var(--kit-surface)] border border-[var(--kit-border)] overflow-hidden shrink-0 flex items-center justify-center text-[var(--kit-muted-fg)] text-[10px]">
+          return (
+            <div key={item.id} className="pt-3 first:pt-0 flex items-center gap-3">
+              <div className="relative h-12 w-12 rounded-xl bg-[var(--kit-surface)] border border-[var(--kit-border)] overflow-hidden shrink-0 flex items-center justify-center text-[var(--kit-muted-fg)] text-[10px]">
+                {imageUrl ? (
+                  <Image
+                    src={imageUrl}
+                    alt={productName}
+                    fill
+                    sizes="48px"
+                    className="object-cover"
+                  />
+                ) : (
                   <ShoppingBag className="h-5 w-5 opacity-30" />
-                  <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-[var(--kit-accent)] text-[9px] font-bold text-[var(--kit-accent-fg)]">
-                    {item.quantity}
-                  </span>
-                </div>
-
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-semibold text-[var(--kit-text-primary)] truncate">
-                    {product?.name ?? "Product"}
-                  </p>
-                </div>
-
-                <div className="text-right text-xs font-bold text-[var(--kit-text-primary)]">
-                  <Price amount={(item.unit_price_snapshot / 100) * item.quantity} size="sm" />
-                </div>
+                )}
+                <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-[var(--kit-accent)] text-[9px] font-bold text-[var(--kit-accent-fg)] z-10 shadow-xs">
+                  {item.quantity}
+                </span>
               </div>
-            );
-          })}
+
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-semibold text-[var(--kit-text-primary)] truncate">
+                  {productName}
+                </p>
+                {item.variant?.sku && (
+                  <p className="text-[10px] text-[var(--kit-muted-fg)] truncate">
+                    SKU: {item.variant.sku}
+                  </p>
+                )}
+              </div>
+
+              <div className="text-right text-xs font-bold text-[var(--kit-text-primary)]">
+                <Price amount={(item.unit_price_snapshot / 100) * item.quantity} size="sm" />
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       {/* Cost Breakdown */}

@@ -5,11 +5,13 @@
  *
  * Client Component. Authoritative radio selector for server-resolved shipping options.
  * Displays server-calculated delivery rates, estimates, free-shipping badges,
+ * recommended/suggested option highlighting, "See all" expandable selection,
  * and handles unserviceable / loading states according to strict store rules.
  */
 
 import * as React from "react";
-import { Check, Loader2, AlertTriangle, Truck } from "lucide-react";
+import { useState } from "react";
+import { Check, Loader2, AlertTriangle, Truck, ChevronDown, ChevronUp, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { Price } from "@/components/shared/Price";
 import type { ResolvedShippingOption } from "@/services/shipping-service";
@@ -33,6 +35,96 @@ export function ShippingMethodSelector({
   onSelectMethod,
   className,
 }: ShippingMethodSelectorProps) {
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  // The primary/suggested option is the first option resolved by the server
+  const suggestedOption = options.length > 0 ? options[0] : null;
+
+  // Render a single method card
+  const renderOptionCard = (option: ResolvedShippingOption) => {
+    const isSelected = selectedMethodId === option.methodId;
+    const isSuggested = option.methodId === suggestedOption?.methodId;
+
+    return (
+      <div
+        key={option.methodId}
+        onClick={() => onSelectMethod(option.methodId)}
+        role="radio"
+        aria-checked={isSelected}
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onSelectMethod(option.methodId);
+          }
+        }}
+        className={cn(
+          "flex flex-col sm:flex-row sm:items-center justify-between p-4 rounded-xl border-2 cursor-pointer transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--kit-accent)] gap-3 min-h-[56px]",
+          isSelected
+            ? "border-[var(--kit-accent)] bg-[var(--kit-accent)]/5 shadow-xs"
+            : "border-[var(--kit-border)] bg-[var(--kit-card)] hover:border-[var(--kit-accent)]/50"
+        )}
+      >
+        <div className="flex items-start sm:items-center gap-3">
+          <div
+            className={cn(
+              "flex h-5 w-5 items-center justify-center rounded-full border transition-colors shrink-0 mt-0.5 sm:mt-0",
+              isSelected
+                ? "border-[var(--kit-accent)] bg-[var(--kit-accent)] text-white"
+                : "border-[var(--kit-border)] bg-[var(--kit-surface)]"
+            )}
+          >
+            {isSelected && <Check className="h-3 w-3 stroke-[3]" />}
+          </div>
+
+          <div className="space-y-0.5">
+            <div className="flex items-center gap-2 flex-wrap">
+              <p className="text-xs sm:text-sm font-bold text-[var(--kit-text-primary)]">
+                {option.name}
+              </p>
+              {isSuggested && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-[var(--kit-accent)]/10 text-[var(--kit-accent)]">
+                  <Sparkles className="h-2.5 w-2.5" />
+                  Suggested
+                </span>
+              )}
+              {option.isFree && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                  Free
+                </span>
+              )}
+            </div>
+            {option.description && (
+              <p className="text-[11px] text-[var(--kit-text-secondary)]">
+                {option.description}
+              </p>
+            )}
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between sm:justify-end gap-3 sm:text-right border-t sm:border-t-0 border-[var(--kit-border)]/50 pt-2 sm:pt-0">
+          <div className="text-[11px] text-[var(--kit-text-muted)] font-medium">
+            {option.estimatedDaysMin && option.estimatedDaysMax
+              ? option.estimatedDaysMin === option.estimatedDaysMax
+                ? `${option.estimatedDaysMin} day delivery`
+                : `${option.estimatedDaysMin}–${option.estimatedDaysMax} business days`
+              : "Standard delivery"}
+          </div>
+
+          <div className="text-sm font-bold text-[var(--kit-text-primary)]">
+            {option.isFree || option.amount === 0 ? (
+              <span className="text-emerald-600 dark:text-emerald-400 font-extrabold">
+                FREE
+              </span>
+            ) : (
+              <Price amount={option.amount} />
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className={cn("space-y-4", className)}>
       <div className="flex items-center justify-between">
@@ -88,84 +180,48 @@ export function ShippingMethodSelector({
           Please enter or select a delivery address above to view available shipping options.
         </div>
       ) : (
-        /* 5. Authoritative Shipping Options List */
+        /* 5. Authoritative Shipping Options List (Suggested + "See all" expandable view) */
         <div className="space-y-3" role="radiogroup" aria-label="Shipping Methods">
-          {options.map((option) => {
-            const isSelected = selectedMethodId === option.methodId;
+          {options.length === 1 ? (
+            /* Single option available */
+            renderOptionCard(options[0])
+          ) : !isExpanded ? (
+            /* Collapsed view: show selected option (or suggested option) with "See all" toggle */
+            <div className="space-y-2.5">
+              {(() => {
+                const activeOption =
+                  options.find((o) => o.methodId === selectedMethodId) ?? suggestedOption ?? options[0];
+                return renderOptionCard(activeOption);
+              })()}
 
-            return (
-              <div
-                key={option.methodId}
-                onClick={() => onSelectMethod(option.methodId)}
-                role="radio"
-                aria-checked={isSelected}
-                tabIndex={0}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    onSelectMethod(option.methodId);
-                  }
-                }}
-                className={cn(
-                  "flex flex-col sm:flex-row sm:items-center justify-between p-4 rounded-xl border-2 cursor-pointer transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--kit-accent)] gap-3 min-h-[56px]",
-                  isSelected
-                    ? "border-[var(--kit-accent)] bg-[var(--kit-accent)]/5 shadow-xs"
-                    : "border-[var(--kit-border)] bg-[var(--kit-card)] hover:border-[var(--kit-accent)]/50"
-                )}
+              <button
+                type="button"
+                onClick={() => setIsExpanded(true)}
+                aria-expanded={false}
+                className="flex items-center gap-1.5 text-xs font-semibold text-[var(--kit-accent)] hover:underline pt-0.5 px-1 min-h-[36px] transition-colors"
               >
-                <div className="flex items-start sm:items-center gap-3">
-                  <div
-                    className={cn(
-                      "flex h-5 w-5 items-center justify-center rounded-full border transition-colors shrink-0 mt-0.5 sm:mt-0",
-                      isSelected
-                        ? "border-[var(--kit-accent)] bg-[var(--kit-accent)] text-white"
-                        : "border-[var(--kit-border)] bg-[var(--kit-surface)]"
-                    )}
-                  >
-                    {isSelected && <Check className="h-3 w-3 stroke-[3]" />}
-                  </div>
+                <span>See all shipping methods ({options.length})</span>
+                <ChevronDown className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          ) : (
+            /* Expanded view: show all available options with "Show less" toggle */
+            <div className="space-y-3 animate-in fade-in duration-200">
+              {options.map((option) => renderOptionCard(option))}
 
-                  <div className="space-y-0.5">
-                    <div className="flex items-center gap-2">
-                      <p className="text-xs sm:text-sm font-bold text-[var(--kit-text-primary)]">
-                        {option.name}
-                      </p>
-                      {option.isFree && (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
-                          Free
-                        </span>
-                      )}
-                    </div>
-                    {option.description && (
-                      <p className="text-[11px] text-[var(--kit-text-secondary)]">
-                        {option.description}
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between sm:justify-end gap-3 sm:text-right border-t sm:border-t-0 border-[var(--kit-border)]/50 pt-2 sm:pt-0">
-                  <div className="text-[11px] text-[var(--kit-text-muted)] font-medium">
-                    {option.estimatedDaysMin && option.estimatedDaysMax
-                      ? option.estimatedDaysMin === option.estimatedDaysMax
-                        ? `${option.estimatedDaysMin} day delivery`
-                        : `${option.estimatedDaysMin}–${option.estimatedDaysMax} business days`
-                      : "Standard delivery"}
-                  </div>
-
-                  <div className="text-sm font-bold text-[var(--kit-text-primary)]">
-                    {option.isFree || option.amount === 0 ? (
-                      <span className="text-emerald-600 dark:text-emerald-400 font-extrabold">
-                        FREE
-                      </span>
-                    ) : (
-                      <Price amount={option.amount} />
-                    )}
-                  </div>
-                </div>
+              <div className="pt-1">
+                <button
+                  type="button"
+                  onClick={() => setIsExpanded(false)}
+                  aria-expanded={true}
+                  className="flex items-center gap-1.5 text-xs font-semibold text-[var(--kit-muted-fg)] hover:text-[var(--kit-text-primary)] px-1 min-h-[36px] transition-colors"
+                >
+                  <span>Show less</span>
+                  <ChevronUp className="h-3.5 w-3.5" />
+                </button>
               </div>
-            );
-          })}
+            </div>
+          )}
         </div>
       )}
     </div>

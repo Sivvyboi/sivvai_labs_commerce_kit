@@ -47,9 +47,9 @@ export function OrderItemsList({ lines }: OrderItemsListProps) {
             </div>
 
             <div className="text-right space-y-0.5 shrink-0">
-              <Price amount={line.line_total} className="font-bold text-sm text-[var(--kit-text-primary)]" />
+              <Price amount={Number(line.line_total) / 100} className="font-bold text-sm text-[var(--kit-text-primary)]" />
               <p className="text-[11px] text-[var(--kit-muted-fg)]">
-                {line.quantity} × <Price amount={line.unit_price_snapshot} />
+                {line.quantity} × <Price amount={Number(line.unit_price_snapshot) / 100} />
               </p>
             </div>
           </div>
