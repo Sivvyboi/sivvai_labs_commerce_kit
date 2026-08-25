@@ -1,6 +1,27 @@
 import * as shippingRepo from "@/lib/db/shipping";
 import { NotFoundError } from "@/lib/errors";
 
+export interface ResolvedShippingOption {
+  methodId: string;
+  name: string;
+  description: string | null;
+  type: string;
+  amount: number;
+  isFree: boolean;
+  estimatedDaysMin: number;
+  estimatedDaysMax: number;
+}
+
+export interface ShippingResolutionResult {
+  serviceable: boolean;
+  reason?: "unserviceable" | "no_methods" | "invalid_address";
+  zone: {
+    id: string;
+    name: string;
+  } | null;
+  options: ResolvedShippingOption[];
+}
+
 export async function getShippingOptions() {
   return shippingRepo.findShippingZones();
 }
@@ -13,23 +34,108 @@ export async function getFulfilmentMethod(methodId: string) {
   return method;
 }
 
+/**
+ * Server-authoritative resolution of available shipping options for a customer delivery address.
+ */
+export async function resolveShippingOptionsForAddress(
+  destination: { state?: string; city?: string; country?: string } | string,
+  subtotal: number
+): Promise<ShippingResolutionResult> {
+  const zone = await shippingRepo.findMatchingShippingZone(destination);
+  if (!zone) {
+    return {
+      serviceable: false,
+      reason: "unserviceable",
+      zone: null,
+      options: [],
+    };
+  }
+
+  const ratesWithMethods = await shippingRepo.findShippingRatesWithMethodsByZone(zone.id);
+  if (!ratesWithMethods || ratesWithMethods.length === 0) {
+    return {
+      serviceable: false,
+      reason: "no_methods",
+      zone: {
+        id: zone.id,
+        name: zone.name,
+      },
+      options: [],
+    };
+  }
+
+  const options: ResolvedShippingOption[] = ratesWithMethods.map((item) => {
+    const method = item.fulfilment_methods!;
+    let amount = item.flat_amount;
+    let isFree = false;
+
+    if (item.rate_type === "free_above") {
+      if (
+        item.free_above_order_total !== null &&
+        item.free_above_order_total !== undefined &&
+        subtotal >= item.free_above_order_total
+      ) {
+        amount = 0;
+        isFree = true;
+      }
+    }
+
+    if (amount === 0) {
+      isFree = true;
+    }
+
+    return {
+      methodId: method.id,
+      name: method.name,
+      description: method.description,
+      type: method.type,
+      amount,
+      isFree,
+      estimatedDaysMin: method.estimated_days_min,
+      estimatedDaysMax: method.estimated_days_max,
+    };
+  });
+
+  return {
+    serviceable: true,
+    zone: {
+      id: zone.id,
+      name: zone.name,
+    },
+    options,
+  };
+}
+
+/**
+ * Server-authoritative calculation of shipping price for a specific method and destination address.
+ * Re-validates that the method is active and has a configured rate for the matching zone.
+ */
 export async function calculateShippingRate(
   methodId: string,
   subtotal: number,
-  destinationState?: string
+  destination?: { state?: string; city?: string; country?: string } | string
 ): Promise<number> {
-  const zone = await shippingRepo.findMatchingShippingZone(destinationState);
-  if (!zone) return 0;
-
-  let rate = await shippingRepo.findShippingRateForMethodAndZone(methodId, zone.id);
-  if (!rate) {
-    const rates = await shippingRepo.findShippingRatesByZone(zone.id);
-    rate = rates[0] ?? null;
+  const zone = await shippingRepo.findMatchingShippingZone(destination);
+  if (!zone) {
+    throw new Error("We do not currently deliver to this destination address.");
   }
 
-  if (!rate) return 0;
+  const method = await shippingRepo.findFulfilmentMethodById(methodId);
+  if (!method || !method.is_enabled) {
+    throw new Error("The selected fulfilment method is not active.");
+  }
 
-  if (rate.free_above_order_total !== null && subtotal >= rate.free_above_order_total) {
+  const rate = await shippingRepo.findShippingRateForMethodAndZone(methodId, zone.id);
+  if (!rate) {
+    throw new Error("The selected shipping method is not available for your delivery zone.");
+  }
+
+  if (
+    rate.rate_type === "free_above" &&
+    rate.free_above_order_total !== null &&
+    rate.free_above_order_total !== undefined &&
+    subtotal >= rate.free_above_order_total
+  ) {
     return 0;
   }
 

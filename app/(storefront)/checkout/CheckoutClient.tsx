@@ -45,6 +45,10 @@ export function CheckoutClient({ customer }: CheckoutClientProps) {
     saveAddressToAccount,
     shippingMethodId,
     shippingTotal,
+    shippingOptions,
+    isLoadingShippingOptions,
+    shippingServiceable,
+    shippingReason,
     promoCode,
     discountTotal,
     paymentProvider,
@@ -97,8 +101,12 @@ export function CheckoutClient({ customer }: CheckoutClientProps) {
   };
 
   const handleNextFromStep2 = () => {
+    if (!shippingServiceable) {
+      setFormErrors({ shipping: "This address cannot be delivered to. Please go back and change your delivery address." });
+      return;
+    }
     if (!shippingMethodId) {
-      setFormErrors({ shipping: "Please select a shipping method" });
+      setFormErrors({ shipping: "Please select a shipping method to proceed" });
       return;
     }
     setFormErrors({});
@@ -118,7 +126,7 @@ export function CheckoutClient({ customer }: CheckoutClientProps) {
         {/* Global / Submit Error Alert */}
         {errorMessage && (
           <div className="flex items-center gap-3 p-4 rounded-xl border border-red-500/30 bg-red-500/10 text-red-500 text-xs sm:text-sm font-medium">
-            <AlertTriangle className="h-5 w-5 shrink-0" />
+            <AlertTriangle className="h-4 w-4 shrink-0" />
             <span>{errorMessage}</span>
           </div>
         )}
@@ -126,6 +134,7 @@ export function CheckoutClient({ customer }: CheckoutClientProps) {
         {/* STEP 1: Contact & Address */}
         {step === 1 && (
           <div className="space-y-6 animate-in fade-in duration-200">
+            {/* Contact Information */}
             <ContactForm
               contact={contact}
               onChange={updateContact}
@@ -133,7 +142,7 @@ export function CheckoutClient({ customer }: CheckoutClientProps) {
               isLoggedIn={Boolean(customer)}
             />
 
-            {/* Saved Address Selector for Logged-In Customers with Addresses */}
+            {/* Saved Addresses (if available) */}
             {customer && savedAddresses.length > 0 && (
               <SavedAddressSelector
                 addresses={savedAddresses}
@@ -144,12 +153,8 @@ export function CheckoutClient({ customer }: CheckoutClientProps) {
               />
             )}
 
-            {formErrors.address && (
-              <p className="text-xs text-red-500 font-medium">{formErrors.address}</p>
-            )}
-
-            {/* New Shipping Address Form (Guests, customers without saved addresses, or "Use new address" mode) */}
-            {(!customer || savedAddresses.length === 0 || addressMode === "new") && (
+            {/* Address Form (if new address or guest) */}
+            {(addressMode === "new" || !customer || savedAddresses.length === 0) && (
               <ShippingAddressForm
                 address={address}
                 onChange={updateAddress}
@@ -178,9 +183,15 @@ export function CheckoutClient({ customer }: CheckoutClientProps) {
         {step === 2 && (
           <div className="space-y-6 animate-in fade-in duration-200">
             <ShippingMethodSelector
+              options={shippingOptions}
+              isLoading={isLoadingShippingOptions}
+              isServiceable={shippingServiceable}
+              reason={shippingReason}
               selectedMethodId={shippingMethodId}
-              onSelectMethod={(id) => selectShippingMethod(id)}
-              subtotal={subtotal}
+              onSelectMethod={(id) => {
+                selectShippingMethod(id);
+                setFormErrors({});
+              }}
             />
 
             {formErrors.shipping && (
@@ -200,7 +211,8 @@ export function CheckoutClient({ customer }: CheckoutClientProps) {
               <button
                 type="button"
                 onClick={handleNextFromStep2}
-                className="flex items-center gap-2 rounded-xl bg-[var(--kit-accent)] px-6 py-3.5 text-sm font-bold text-[var(--kit-accent-fg)] hover:opacity-90 transition-opacity shadow-xs min-h-[48px]"
+                disabled={!shippingServiceable || !shippingMethodId || isLoadingShippingOptions}
+                className="flex items-center gap-2 rounded-xl bg-[var(--kit-accent)] px-6 py-3.5 text-sm font-bold text-[var(--kit-accent-fg)] hover:opacity-90 transition-opacity shadow-xs min-h-[48px] disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <span>Continue to Review</span>
                 <ArrowRight className="h-4 w-4" />
@@ -216,6 +228,9 @@ export function CheckoutClient({ customer }: CheckoutClientProps) {
               contact={contact}
               address={address}
               shippingMethodId={shippingMethodId}
+              selectedShippingOption={
+                shippingOptions.find((o) => o.methodId === shippingMethodId) ?? null
+              }
               onEditStep={(s) => goToStep(s as CheckoutStep)}
             />
 

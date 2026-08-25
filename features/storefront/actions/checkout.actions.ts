@@ -44,11 +44,43 @@ export async function getCheckoutSessionAction(id: string) {
 }
 
 /**
+ * Resolves available shipping options for a given customer destination address.
+ */
+export async function getShippingOptionsForAddressAction(
+  destination: { state?: string; city?: string; country?: string },
+  subtotal: number
+) {
+  try {
+    const result = await shippingService.resolveShippingOptionsForAddress(
+      destination,
+      subtotal
+    );
+    return { success: true, ...result };
+  } catch (err) {
+    return {
+      success: false,
+      serviceable: false,
+      reason: "unserviceable" as const,
+      options: [],
+      error: err instanceof Error ? err.message : "Failed to resolve shipping options",
+    };
+  }
+}
+
+/**
  * Calculates shipping rate for a selected fulfilment method and cart subtotal.
  */
-export async function calculateShippingAction(methodId: string, subtotal: number) {
+export async function calculateShippingAction(
+  methodId: string,
+  subtotal: number,
+  destination?: { state?: string; city?: string } | string
+) {
   try {
-    const rate = await shippingService.calculateShippingRate(methodId, subtotal);
+    const rate = await shippingService.calculateShippingRate(
+      methodId,
+      subtotal,
+      destination
+    );
     return { success: true, rate };
   } catch (err) {
     return {

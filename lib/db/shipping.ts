@@ -69,7 +69,29 @@ export async function findShippingRatesByZone(zoneId: string): Promise<ShippingR
   return (data || []) as unknown as ShippingRateRow[];
 }
 
-export async function findMatchingShippingZone(state?: string): Promise<ShippingZoneRow | null> {
+export async function findShippingRatesWithMethodsByZone(
+  zoneId: string
+): Promise<ShippingRateWithMethod[]> {
+  const supabase = createPublicClient();
+  const { data, error } = await supabase
+    .from("shipping_rates")
+    .select(`
+      *,
+      fulfilment_methods:fulfilment_methods(*)
+    `)
+    .eq("zone_id", zoneId);
+
+  if (error) throw error;
+  // Filter out any rates whose fulfilment method is missing or disabled
+  const filtered = ((data || []) as unknown as ShippingRateWithMethod[]).filter(
+    (r) => r.fulfilment_methods && r.fulfilment_methods.is_enabled
+  );
+  return filtered;
+}
+
+export async function findMatchingShippingZone(
+  destination?: { state?: string; city?: string; country?: string } | string
+): Promise<ShippingZoneRow | null> {
   const supabase = createPublicClient();
   const { data: zones, error } = await supabase
     .from("shipping_zones")
@@ -77,14 +99,44 @@ export async function findMatchingShippingZone(state?: string): Promise<Shipping
     .order("name", { ascending: true });
 
   if (error || !zones || zones.length === 0) return null;
-  if (!state) return zones[0] ?? null;
+  if (!destination) return null;
 
-  const normalizedState = state.trim().toLowerCase();
-  const matched = zones.find((z) =>
-    z.regions.some((r) => r.trim().toLowerCase() === normalizedState)
+  const rawState = typeof destination === "string" ? destination : destination.state;
+  const rawCity = typeof destination === "object" ? destination.city : undefined;
+
+  const stateStr = rawState?.trim().toLowerCase() || "";
+  const cityStr = rawCity?.trim().toLowerCase() || "";
+
+  if (!stateStr && !cityStr) return null;
+
+  // Check matching zones
+  // 1. Direct state or city match
+  const directMatches = zones.filter((z) =>
+    z.regions.some((r) => {
+      const reg = r.trim().toLowerCase();
+      if (reg === "nationwide" || reg === "*" || reg === "all") return false;
+      return (
+        (stateStr && (reg === stateStr || stateStr.includes(reg) || reg.includes(stateStr))) ||
+        (cityStr && (reg === cityStr || cityStr.includes(reg) || reg.includes(cityStr)))
+      );
+    })
   );
 
-  return matched ?? zones[0] ?? null;
+  if (directMatches.length > 0) {
+    // Deterministic specificity: zone with fewer regions is more specific and takes precedence
+    directMatches.sort((a, b) => a.regions.length - b.regions.length);
+    return directMatches[0];
+  }
+
+  // 2. Fallback to Nationwide / wildcard zone if configured by admin
+  const nationwideZone = zones.find((z) =>
+    z.regions.some((r) => {
+      const reg = r.trim().toLowerCase();
+      return reg === "nationwide" || reg === "*" || reg === "all";
+    })
+  );
+
+  return nationwideZone ?? null;
 }
 
 export async function findShippingRateForMethodAndZone(

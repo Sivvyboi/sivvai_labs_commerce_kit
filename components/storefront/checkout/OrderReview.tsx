@@ -9,6 +9,7 @@
  */
 
 import type { ContactInfo, ShippingAddressInfo, CheckoutStep } from "@/features/storefront/hooks/useCheckout";
+import type { ResolvedShippingOption } from "@/services/shipping-service";
 import { useCart } from "@/features/storefront/hooks/useCart";
 import { Price } from "@/components/shared/Price";
 import { User, MapPin, Truck, Edit2, ShoppingBag } from "lucide-react";
@@ -18,6 +19,7 @@ export interface OrderReviewProps {
   contact: ContactInfo;
   address: ShippingAddressInfo;
   shippingMethodId: string | null;
+  selectedShippingOption?: ResolvedShippingOption | null;
   onEditStep: (step: CheckoutStep) => void;
   className?: string;
 }
@@ -26,6 +28,7 @@ export function OrderReview({
   contact,
   address,
   shippingMethodId,
+  selectedShippingOption,
   onEditStep,
   className,
 }: OrderReviewProps) {
@@ -92,27 +95,43 @@ export function OrderReview({
 
       {/* Selected Shipping Method Summary Box */}
       <div className="rounded-2xl border border-[var(--kit-border)] bg-[var(--kit-card)] p-4 flex items-center justify-between gap-3 shadow-xs">
-        <div className="flex items-center gap-3">
-          <Truck className="h-4 w-4 text-[var(--kit-accent)] shrink-0" />
-          <div className="text-xs sm:text-sm">
+        <div className="flex items-start gap-3">
+          <Truck className="h-4 w-4 text-[var(--kit-accent)] shrink-0 mt-0.5" />
+          <div className="text-xs sm:text-sm space-y-0.5">
             <p className="font-bold text-[var(--kit-text-primary)]">
-              {shippingMethodId ? "Selected Shipping Method" : "Standard Delivery"}
+              {selectedShippingOption?.name ?? (shippingMethodId ? "Delivery Method Selected" : "Delivery Not Selected")}
             </p>
             <p className="text-xs text-[var(--kit-muted-fg)]">
-              Dispatch within 1-3 business days
+              {selectedShippingOption
+                ? selectedShippingOption.estimatedDaysMin && selectedShippingOption.estimatedDaysMax
+                  ? `Estimated delivery: ${selectedShippingOption.estimatedDaysMin}–${selectedShippingOption.estimatedDaysMax} business days`
+                  : "Standard Delivery"
+                : "No delivery method selected"}
             </p>
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={() => onEditStep(2)}
-          aria-label="Edit shipping method"
-          className="flex items-center gap-1 text-xs font-semibold text-[var(--kit-accent)] hover:underline min-h-[36px]"
-        >
-          <Edit2 className="h-3.5 w-3.5" />
-          <span>Edit</span>
-        </button>
+        <div className="flex items-center gap-3">
+          {selectedShippingOption && (
+            <div className="text-xs sm:text-sm font-bold text-[var(--kit-text-primary)]">
+              {selectedShippingOption.isFree || selectedShippingOption.amount === 0 ? (
+                <span className="text-emerald-600 dark:text-emerald-400 font-extrabold">FREE</span>
+              ) : (
+                <Price amount={selectedShippingOption.amount} size="sm" />
+              )}
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={() => onEditStep(2)}
+            aria-label="Edit shipping method"
+            className="flex items-center gap-1 text-xs font-semibold text-[var(--kit-accent)] hover:underline min-h-[36px]"
+          >
+            <Edit2 className="h-3.5 w-3.5" />
+            <span>Edit</span>
+          </button>
+        </div>
       </div>
 
       {/* Cart Items List Review */}

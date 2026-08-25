@@ -78,7 +78,11 @@ export async function initiateCheckout(input: InitiateCheckoutInput) {
     shippingTotal = await shippingService.calculateShippingRate(
       input.shippingMethodId,
       cart.subtotal,
-      shippingAddressSnapshot.state
+      {
+        state: shippingAddressSnapshot.state,
+        city: shippingAddressSnapshot.city,
+        country: shippingAddressSnapshot.country,
+      }
     );
   }
 

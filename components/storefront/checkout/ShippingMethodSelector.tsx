@@ -3,151 +3,171 @@
 /**
  * components/storefront/checkout/ShippingMethodSelector.tsx
  *
- * Client Component. Radio selector for active fulfilment methods.
+ * Client Component. Authoritative radio selector for server-resolved shipping options.
+ * Displays server-calculated delivery rates, estimates, free-shipping badges,
+ * and handles unserviceable / loading states according to strict store rules.
  */
 
-import { useEffect, useState } from "react";
-import type { FulfilmentMethodRow } from "@/lib/db/shipping";
-import { Check, Loader2 } from "lucide-react";
+import * as React from "react";
+import { Check, Loader2, AlertTriangle, Truck } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
+import { Price } from "@/components/shared/Price";
+import type { ResolvedShippingOption } from "@/services/shipping-service";
 
 export interface ShippingMethodSelectorProps {
+  options: ResolvedShippingOption[];
+  isLoading: boolean;
+  isServiceable: boolean;
+  reason?: "unserviceable" | "no_methods" | "invalid_address" | string;
   selectedMethodId: string | null;
   onSelectMethod: (methodId: string) => void;
-  subtotal?: number;
   className?: string;
 }
 
 export function ShippingMethodSelector({
+  options,
+  isLoading,
+  isServiceable,
+  reason,
   selectedMethodId,
   onSelectMethod,
   className,
 }: ShippingMethodSelectorProps) {
-  const [methods, setMethods] = useState<FulfilmentMethodRow[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    async function fetchMethods() {
-      try {
-        const res = await fetch("/api/shipping/methods");
-        if (res.ok) {
-          const json = await res.json();
-          const list: FulfilmentMethodRow[] = json.data ?? json.methods ?? [];
-          setMethods(list);
-
-          // Auto-select first method if none selected yet
-          if (!selectedMethodId && list.length > 0) {
-            onSelectMethod(list[0].id);
-          }
-        }
-      } catch {
-        // Fallback
-        const fallback: FulfilmentMethodRow[] = [
-          {
-            id: "standard",
-            type: "standard",
-            name: "Standard Shipping",
-            description: "Delivered in 2-4 business days",
-            is_enabled: true,
-            estimated_days_min: 2,
-            estimated_days_max: 4,
-            created_at: "",
-            updated_at: "",
-          },
-          {
-            id: "express",
-            type: "express",
-            name: "Express Delivery",
-            description: "Same day or next day dispatch",
-            is_enabled: true,
-            estimated_days_min: 1,
-            estimated_days_max: 2,
-            created_at: "",
-            updated_at: "",
-          },
-        ];
-        setMethods(fallback);
-        if (!selectedMethodId) onSelectMethod(fallback[0].id);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    fetchMethods();
-  }, [selectedMethodId, onSelectMethod]);
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-8 text-[var(--kit-muted-fg)] gap-2">
-        <Loader2 className="h-5 w-5 animate-spin text-[var(--kit-accent)]" />
-        <span className="text-xs">Loading shipping options...</span>
-      </div>
-    );
-  }
-
   return (
     <div className={cn("space-y-4", className)}>
-      <h2 className="text-base font-bold text-[var(--kit-text-primary)]">
-        Shipping Method
-      </h2>
-
-      <div className="space-y-3" role="radiogroup" aria-label="Shipping Methods">
-        {methods.map((method) => {
-          const isSelected = selectedMethodId === method.id;
-
-          return (
-            <div
-              key={method.id}
-              onClick={() => onSelectMethod(method.id)}
-              role="radio"
-              aria-checked={isSelected}
-              tabIndex={0}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  onSelectMethod(method.id);
-                }
-              }}
-              className={cn(
-                "flex items-center justify-between p-4 rounded-xl border-2 cursor-pointer transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--kit-accent)] min-h-[48px]",
-                isSelected
-                  ? "border-[var(--kit-accent)] bg-[var(--kit-accent)]/5 shadow-xs"
-                  : "border-[var(--kit-border)] bg-[var(--kit-card)] hover:border-[var(--kit-accent)]/50"
-              )}
-            >
-              <div className="flex items-center gap-3">
-                <div
-                  className={cn(
-                    "flex h-5 w-5 items-center justify-center rounded-full border transition-colors shrink-0",
-                    isSelected
-                      ? "border-[var(--kit-accent)] bg-[var(--kit-accent)] text-[var(--kit-accent-fg)]"
-                      : "border-[var(--kit-border)]"
-                  )}
-                >
-                  {isSelected && <Check className="h-3 w-3 stroke-[3]" />}
-                </div>
-
-                <div className="space-y-0.5">
-                  <p className="text-xs sm:text-sm font-bold text-[var(--kit-text-primary)]">
-                    {method.name}
-                  </p>
-                  {method.description && (
-                    <p className="text-[11px] text-[var(--kit-muted-fg)]">
-                      {method.description}
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              <div className="text-xs font-semibold text-[var(--kit-accent)]">
-                {method.estimated_days_min && method.estimated_days_max
-                  ? `${method.estimated_days_min}-${method.estimated_days_max} days`
-                  : "Fast Shipping"}
-              </div>
-            </div>
-          );
-        })}
+      <div className="flex items-center justify-between">
+        <h2 className="text-base font-bold text-[var(--kit-text-primary)] flex items-center gap-2">
+          <Truck className="h-4 w-4 text-[var(--kit-accent)]" />
+          Delivery & Shipping Method
+        </h2>
+        {isLoading && (
+          <span className="flex items-center gap-1.5 text-xs text-[var(--kit-text-muted)] animate-pulse">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" /> Updating rates...
+          </span>
+        )}
       </div>
+
+      {/* 1. Loading State */}
+      {isLoading && options.length === 0 ? (
+        <div className="flex items-center gap-3.5 p-6 rounded-xl border border-dashed border-[var(--kit-border)] bg-[var(--kit-surface)] text-[var(--kit-text-secondary)]">
+          <Loader2 className="h-5 w-5 animate-spin text-[var(--kit-accent)] shrink-0" />
+          <div className="space-y-0.5">
+            <p className="text-xs sm:text-sm font-semibold text-[var(--kit-text-primary)]">
+              Calculating available delivery methods...
+            </p>
+            <p className="text-[11px] text-[var(--kit-text-muted)]">
+              Checking regional delivery zones and live shipping rates for your address.
+            </p>
+          </div>
+        </div>
+      ) : !isServiceable && reason === "unserviceable" ? (
+        /* 2. Destination Not Serviceable (Step 14) */
+        <div className="p-4 sm:p-5 rounded-xl border border-amber-500/30 bg-amber-500/10 text-[var(--kit-text-primary)] space-y-1.5 animate-in fade-in duration-200">
+          <div className="flex items-center gap-2 font-semibold text-xs sm:text-sm text-amber-600 dark:text-amber-400">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            <span>Delivery Not Available</span>
+          </div>
+          <p className="text-xs text-[var(--kit-text-secondary)] leading-relaxed">
+            We don&apos;t currently deliver to this address. Please check your shipping address or choose a different delivery location.
+          </p>
+        </div>
+      ) : !isServiceable && reason === "no_methods" ? (
+        /* 3. Matching Zone with No Active Methods (Step 15) */
+        <div className="p-4 sm:p-5 rounded-xl border border-amber-500/30 bg-amber-500/10 text-[var(--kit-text-primary)] space-y-1.5 animate-in fade-in duration-200">
+          <div className="flex items-center gap-2 font-semibold text-xs sm:text-sm text-amber-600 dark:text-amber-400">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            <span>No Delivery Options Available</span>
+          </div>
+          <p className="text-xs text-[var(--kit-text-secondary)] leading-relaxed">
+            No delivery options are currently available for this address. Please try another address or contact the store.
+          </p>
+        </div>
+      ) : options.length === 0 ? (
+        /* 4. Empty State / No Address Entered Yet */
+        <div className="p-5 rounded-xl border border-dashed border-[var(--kit-border)] bg-[var(--kit-surface)] text-center text-xs text-[var(--kit-text-muted)]">
+          Please enter or select a delivery address above to view available shipping options.
+        </div>
+      ) : (
+        /* 5. Authoritative Shipping Options List */
+        <div className="space-y-3" role="radiogroup" aria-label="Shipping Methods">
+          {options.map((option) => {
+            const isSelected = selectedMethodId === option.methodId;
+
+            return (
+              <div
+                key={option.methodId}
+                onClick={() => onSelectMethod(option.methodId)}
+                role="radio"
+                aria-checked={isSelected}
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    onSelectMethod(option.methodId);
+                  }
+                }}
+                className={cn(
+                  "flex flex-col sm:flex-row sm:items-center justify-between p-4 rounded-xl border-2 cursor-pointer transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--kit-accent)] gap-3 min-h-[56px]",
+                  isSelected
+                    ? "border-[var(--kit-accent)] bg-[var(--kit-accent)]/5 shadow-xs"
+                    : "border-[var(--kit-border)] bg-[var(--kit-card)] hover:border-[var(--kit-accent)]/50"
+                )}
+              >
+                <div className="flex items-start sm:items-center gap-3">
+                  <div
+                    className={cn(
+                      "flex h-5 w-5 items-center justify-center rounded-full border transition-colors shrink-0 mt-0.5 sm:mt-0",
+                      isSelected
+                        ? "border-[var(--kit-accent)] bg-[var(--kit-accent)] text-white"
+                        : "border-[var(--kit-border)] bg-[var(--kit-surface)]"
+                    )}
+                  >
+                    {isSelected && <Check className="h-3 w-3 stroke-[3]" />}
+                  </div>
+
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-2">
+                      <p className="text-xs sm:text-sm font-bold text-[var(--kit-text-primary)]">
+                        {option.name}
+                      </p>
+                      {option.isFree && (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                          Free
+                        </span>
+                      )}
+                    </div>
+                    {option.description && (
+                      <p className="text-[11px] text-[var(--kit-text-secondary)]">
+                        {option.description}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between sm:justify-end gap-3 sm:text-right border-t sm:border-t-0 border-[var(--kit-border)]/50 pt-2 sm:pt-0">
+                  <div className="text-[11px] text-[var(--kit-text-muted)] font-medium">
+                    {option.estimatedDaysMin && option.estimatedDaysMax
+                      ? option.estimatedDaysMin === option.estimatedDaysMax
+                        ? `${option.estimatedDaysMin} day delivery`
+                        : `${option.estimatedDaysMin}–${option.estimatedDaysMax} business days`
+                      : "Standard delivery"}
+                  </div>
+
+                  <div className="text-sm font-bold text-[var(--kit-text-primary)]">
+                    {option.isFree || option.amount === 0 ? (
+                      <span className="text-emerald-600 dark:text-emerald-400 font-extrabold">
+                        FREE
+                      </span>
+                    ) : (
+                      <Price amount={option.amount} />
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

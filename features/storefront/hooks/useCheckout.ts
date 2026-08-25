@@ -13,16 +13,17 @@
  * refreshes and step navigation preserve user input seamlessly.
  */
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, startTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useCart } from "./useCart";
 import {
   beginCheckoutAction,
-  calculateShippingAction,
+  getShippingOptionsForAddressAction,
   applyPromoAction,
   initiatePaymentAction,
 } from "@/features/storefront/actions/checkout.actions";
 import type { InitiateCheckoutInput } from "@/lib/validation";
+import type { ResolvedShippingOption } from "@/services/shipping-service";
 
 import type { CustomerWithAddresses } from "@/lib/db/customers";
 
@@ -135,6 +136,13 @@ export function useCheckout(options?: { customer?: CustomerWithAddresses | null 
     };
   });
 
+  // Shipping resolution states
+  const [shippingOptions, setShippingOptions] = useState<ResolvedShippingOption[]>([]);
+  const [isLoadingShippingOptions, setIsLoadingShippingOptions] = useState(false);
+  const [shippingServiceable, setShippingServiceable] = useState(true);
+  const [shippingReason, setShippingReason] = useState<string | undefined>(undefined);
+  const [shippingError, setShippingError] = useState<string | null>(null);
+
   const [shippingMethodId, setShippingMethodId] = useState<string | null>(() => {
     const d = readDraft();
     return typeof d?.shippingMethodId === "string" ? d.shippingMethodId : null;
@@ -205,16 +213,103 @@ export function useCheckout(options?: { customer?: CustomerWithAddresses | null 
     return Math.max(0, subtotal + shippingTotal - discountTotal);
   }, [subtotal, shippingTotal, discountTotal]);
 
+  // ---------------------------------------------------------------------------
+  // Authoritative Shipping Option Fetcher
+  // ---------------------------------------------------------------------------
+  const refreshShippingOptions = useCallback(
+    async (overrideAddress?: ShippingAddressInfo) => {
+      const targetAddr = overrideAddress ?? address;
+      if (!targetAddr.state && !targetAddr.city) {
+        return;
+      }
+
+      setIsLoadingShippingOptions(true);
+      setShippingError(null);
+
+      try {
+        const res = await getShippingOptionsForAddressAction(
+          {
+            state: targetAddr.state,
+            city: targetAddr.city,
+            country: targetAddr.country,
+          },
+          subtotal
+        );
+
+        if (res.success && res.serviceable) {
+          const opts = res.options ?? [];
+          setShippingOptions(opts);
+          setShippingServiceable(true);
+          setShippingReason(undefined);
+
+          // Check if previously selected method is still available in new zone
+          setShippingMethodId((prevSelected) => {
+            const stillValid = opts.find((o) => o.methodId === prevSelected);
+            if (stillValid) {
+              setShippingTotal(stillValid.amount);
+              return prevSelected;
+            } else if (opts.length > 0) {
+              setShippingTotal(opts[0].amount);
+              return opts[0].methodId;
+            } else {
+              setShippingTotal(0);
+              return null;
+            }
+          });
+        } else {
+          // Destination unserviceable or no methods configured
+          setShippingOptions([]);
+          setShippingServiceable(false);
+          setShippingReason(res.reason ?? "unserviceable");
+          setShippingMethodId(null);
+          setShippingTotal(0);
+        }
+      } catch (err) {
+        setShippingOptions([]);
+        setShippingServiceable(false);
+        setShippingError(err instanceof Error ? err.message : "Failed to resolve shipping options");
+        setShippingMethodId(null);
+        setShippingTotal(0);
+      } finally {
+        setIsLoadingShippingOptions(false);
+      }
+    },
+    [address, subtotal]
+  );
+
+  // Automatically refresh shipping options whenever we enter step 2 or the address state/city changes.
+  // Wrapped in startTransition so the async state updates are marked as non-urgent transitions,
+  // preventing the cascading-render lint warning while preserving the same behaviour.
+  useEffect(() => {
+    if ((step >= 2 || defaultAddress) && (address.state || address.city)) {
+      startTransition(() => {
+        refreshShippingOptions();
+      });
+    }
+  }, [step, address.state, address.city, refreshShippingOptions, defaultAddress]);
+
   // Step Navigation Controls
-  const goToStep = useCallback((targetStep: CheckoutStep) => {
-    setErrorMessage(null);
-    setStep(targetStep);
-  }, []);
+  const goToStep = useCallback(
+    (targetStep: CheckoutStep) => {
+      setErrorMessage(null);
+      setStep(targetStep);
+      if (targetStep === 2) {
+        refreshShippingOptions();
+      }
+    },
+    [refreshShippingOptions]
+  );
 
   const nextStep = useCallback(() => {
     setErrorMessage(null);
-    setStep((prev) => Math.min(4, prev + 1) as CheckoutStep);
-  }, []);
+    setStep((prev) => {
+      const next = Math.min(4, prev + 1) as CheckoutStep;
+      if (next === 2) {
+        refreshShippingOptions();
+      }
+      return next;
+    });
+  }, [refreshShippingOptions]);
 
   const previousStep = useCallback(() => {
     setErrorMessage(null);
@@ -227,7 +322,10 @@ export function useCheckout(options?: { customer?: CustomerWithAddresses | null 
   }, []);
 
   const updateAddress = useCallback((addr: Partial<ShippingAddressInfo>) => {
-    setAddress((prev) => ({ ...prev, ...addr }));
+    setAddress((prev) => {
+      const next = { ...prev, ...addr };
+      return next;
+    });
   }, []);
 
   // Address Mode Handlers
@@ -236,18 +334,23 @@ export function useCheckout(options?: { customer?: CustomerWithAddresses | null 
       const target = savedAddresses.find((a) => a.id === addressId);
       if (!target) return;
 
-      setAddressMode("saved");
-      setSelectedAddressId(addressId);
-      setAddress({
+      const newAddr: ShippingAddressInfo = {
         addressLine1: target.street_line_1,
         addressLine2: target.street_line_2 || "",
         city: target.city,
         state: target.state,
         country: target.country || "NG",
-      });
+      };
+
+      setAddressMode("saved");
+      setSelectedAddressId(addressId);
+      setAddress(newAddr);
       setErrorMessage(null);
+
+      // Refresh shipping options for newly selected saved address
+      refreshShippingOptions(newAddr);
     },
-    [savedAddresses]
+    [savedAddresses, refreshShippingOptions]
   );
 
   const selectNewAddress = useCallback(() => {
@@ -260,24 +363,25 @@ export function useCheckout(options?: { customer?: CustomerWithAddresses | null 
       state: "",
       country: "NG",
     });
+    setShippingOptions([]);
+    setShippingMethodId(null);
+    setShippingTotal(0);
     setErrorMessage(null);
   }, []);
 
-  // Shipping Selection & Recalculation
+  // Shipping Selection
   const selectShippingMethod = useCallback(
-    async (methodId: string) => {
+    (methodId: string) => {
       setShippingMethodId(methodId);
       setErrorMessage(null);
-      try {
-        const res = await calculateShippingAction(methodId, subtotal);
-        if (res.success && typeof res.rate === "number") {
-          setShippingTotal(res.rate);
-        }
-      } catch {
+      const matched = shippingOptions.find((o) => o.methodId === methodId);
+      if (matched) {
+        setShippingTotal(matched.amount);
+      } else {
         setShippingTotal(0);
       }
     },
-    [subtotal]
+    [shippingOptions]
   );
 
   // Promo Code Handler
@@ -383,6 +487,12 @@ export function useCheckout(options?: { customer?: CustomerWithAddresses | null 
     saveAddressToAccount,
     shippingMethodId,
     shippingTotal,
+    shippingOptions,
+    isLoadingShippingOptions,
+    shippingServiceable,
+    shippingReason,
+    shippingError,
+    refreshShippingOptions,
     promoCode,
     discountTotal,
     paymentProvider,
