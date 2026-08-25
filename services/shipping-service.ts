@@ -52,17 +52,7 @@ export async function resolveShippingOptionsForAddress(
   }
 
   const ratesWithMethods = await shippingRepo.findShippingRatesWithMethodsByZone(zone.id);
-  if (!ratesWithMethods || ratesWithMethods.length === 0) {
-    return {
-      serviceable: false,
-      reason: "no_methods",
-      zone: {
-        id: zone.id,
-        name: zone.name,
-      },
-      options: [],
-    };
-  }
+  const activeMethods = await shippingRepo.findFulfilmentMethods();
 
   const options: ResolvedShippingOption[] = ratesWithMethods.map((item) => {
     const method = item.fulfilment_methods!;
@@ -96,6 +86,39 @@ export async function resolveShippingOptionsForAddress(
     };
   });
 
+  // If any active pickup fulfilment methods exist in the store and are not yet in options, include them
+  for (const method of activeMethods) {
+    const isPickup =
+      method.type === "local_pickup" ||
+      method.type === "pickup" ||
+      method.name.toLowerCase().includes("pickup");
+
+    if (isPickup && !options.some((o) => o.methodId === method.id)) {
+      options.push({
+        methodId: method.id,
+        name: method.name,
+        description: method.description,
+        type: method.type,
+        amount: 0,
+        isFree: true,
+        estimatedDaysMin: method.estimated_days_min ?? 0,
+        estimatedDaysMax: method.estimated_days_max ?? 1,
+      });
+    }
+  }
+
+  if (options.length === 0) {
+    return {
+      serviceable: false,
+      reason: "no_methods",
+      zone: {
+        id: zone.id,
+        name: zone.name,
+      },
+      options: [],
+    };
+  }
+
   return {
     serviceable: true,
     zone: {
@@ -127,6 +150,15 @@ export async function calculateShippingRate(
 
   const rate = await shippingRepo.findShippingRateForMethodAndZone(methodId, zone.id);
   if (!rate) {
+    const isPickup =
+      method.type === "local_pickup" ||
+      method.type === "pickup" ||
+      method.name.toLowerCase().includes("pickup");
+
+    if (isPickup) {
+      return 0;
+    }
+
     throw new Error("The selected shipping method is not available for your delivery zone.");
   }
 

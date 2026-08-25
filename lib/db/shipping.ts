@@ -73,20 +73,30 @@ export async function findShippingRatesWithMethodsByZone(
   zoneId: string
 ): Promise<ShippingRateWithMethod[]> {
   const supabase = createPublicClient();
-  const { data, error } = await supabase
-    .from("shipping_rates")
-    .select(`
-      *,
-      fulfilment_methods:fulfilment_methods(*)
-    `)
-    .eq("zone_id", zoneId);
+  const [ratesRes, methodsRes] = await Promise.all([
+    supabase.from("shipping_rates").select("*").eq("zone_id", zoneId),
+    supabase.from("fulfilment_methods").select("*").eq("is_enabled", true),
+  ]);
 
-  if (error) throw error;
-  // Filter out any rates whose fulfilment method is missing or disabled
-  const filtered = ((data || []) as unknown as ShippingRateWithMethod[]).filter(
-    (r) => r.fulfilment_methods && r.fulfilment_methods.is_enabled
-  );
-  return filtered;
+  if (ratesRes.error) throw ratesRes.error;
+  if (methodsRes.error) throw methodsRes.error;
+
+  const rates = ratesRes.data || [];
+  const methods = methodsRes.data || [];
+  const methodMap = new Map(methods.map((m) => [m.id, m]));
+
+  const result: ShippingRateWithMethod[] = [];
+  for (const rate of rates) {
+    const method = methodMap.get(rate.fulfilment_method_id);
+    if (method && method.is_enabled) {
+      result.push({
+        ...rate,
+        fulfilment_methods: method,
+      });
+    }
+  }
+
+  return result;
 }
 
 export async function findMatchingShippingZone(

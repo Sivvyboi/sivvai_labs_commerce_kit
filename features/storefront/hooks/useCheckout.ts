@@ -13,12 +13,11 @@
  * refreshes and step navigation preserve user input seamlessly.
  */
 
-import { useState, useEffect, useCallback, useMemo, startTransition } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useCart } from "./useCart";
 import {
   beginCheckoutAction,
-  getShippingOptionsForAddressAction,
   applyPromoAction,
   initiatePaymentAction,
 } from "@/features/storefront/actions/checkout.actions";
@@ -216,9 +215,8 @@ export function useCheckout(options?: { customer?: CustomerWithAddresses | null 
   // ---------------------------------------------------------------------------
   // Authoritative Shipping Option Fetcher
   // ---------------------------------------------------------------------------
-  const refreshShippingOptions = useCallback(
-    async (overrideAddress?: ShippingAddressInfo) => {
-      const targetAddr = overrideAddress ?? address;
+  const fetchShippingOptionsForAddress = useCallback(
+    async (targetAddr: ShippingAddressInfo, currentSubtotal: number) => {
       if (!targetAddr.state && !targetAddr.city) {
         return;
       }
@@ -227,22 +225,24 @@ export function useCheckout(options?: { customer?: CustomerWithAddresses | null 
       setShippingError(null);
 
       try {
-        const res = await getShippingOptionsForAddressAction(
-          {
-            state: targetAddr.state,
-            city: targetAddr.city,
-            country: targetAddr.country,
-          },
-          subtotal
-        );
+        const query = new URLSearchParams({
+          state: targetAddr.state || "",
+          city: targetAddr.city || "",
+          country: targetAddr.country || "NG",
+          subtotal: String(currentSubtotal || 0),
+        });
+
+        const res = await fetch(`/api/shipping/methods?${query.toString()}`, {
+          method: "GET",
+          headers: { "Content-Type": "application/json" },
+        }).then((r) => r.json());
 
         if (res.success && res.serviceable) {
-          const opts = res.options ?? [];
+          const opts: ResolvedShippingOption[] = res.options ?? [];
           setShippingOptions(opts);
           setShippingServiceable(true);
           setShippingReason(undefined);
 
-          // Check if previously selected method is still available in new zone
           setShippingMethodId((prevSelected) => {
             const stillValid = opts.find((o) => o.methodId === prevSelected);
             if (stillValid) {
@@ -257,7 +257,6 @@ export function useCheckout(options?: { customer?: CustomerWithAddresses | null 
             }
           });
         } else {
-          // Destination unserviceable or no methods configured
           setShippingOptions([]);
           setShippingServiceable(false);
           setShippingReason(res.reason ?? "unserviceable");
@@ -274,19 +273,88 @@ export function useCheckout(options?: { customer?: CustomerWithAddresses | null 
         setIsLoadingShippingOptions(false);
       }
     },
-    [address, subtotal]
+    []
   );
 
-  // Automatically refresh shipping options whenever we enter step 2 or the address state/city changes.
-  // Wrapped in startTransition so the async state updates are marked as non-urgent transitions,
-  // preventing the cascading-render lint warning while preserving the same behaviour.
+  const refreshShippingOptions = useCallback(
+    async (overrideAddress?: ShippingAddressInfo) => {
+      const targetAddr = overrideAddress ?? address;
+      await fetchShippingOptionsForAddress(targetAddr, subtotal);
+    },
+    [address, subtotal, fetchShippingOptionsForAddress]
+  );
+
+  // Automatically refresh shipping options whenever we enter step 2 or the address state/city changes
   useEffect(() => {
+    let ignore = false;
+
     if ((step >= 2 || defaultAddress) && (address.state || address.city)) {
-      startTransition(() => {
-        refreshShippingOptions();
-      });
+      const runFetch = async () => {
+        setIsLoadingShippingOptions(true);
+        setShippingError(null);
+
+        try {
+          const query = new URLSearchParams({
+            state: address.state || "",
+            city: address.city || "",
+            country: address.country || "NG",
+            subtotal: String(subtotal || 0),
+          });
+
+          const res = await fetch(`/api/shipping/methods?${query.toString()}`, {
+            method: "GET",
+            headers: { "Content-Type": "application/json" },
+          }).then((r) => r.json());
+
+          if (ignore) return;
+
+          if (res.success && res.serviceable) {
+            const opts: ResolvedShippingOption[] = res.options ?? [];
+            setShippingOptions(opts);
+            setShippingServiceable(true);
+            setShippingReason(undefined);
+
+            setShippingMethodId((prevSelected) => {
+              const stillValid = opts.find((o) => o.methodId === prevSelected);
+              if (stillValid) {
+                setShippingTotal(stillValid.amount);
+                return prevSelected;
+              } else if (opts.length > 0) {
+                setShippingTotal(opts[0].amount);
+                return opts[0].methodId;
+              } else {
+                setShippingTotal(0);
+                return null;
+              }
+            });
+          } else {
+            setShippingOptions([]);
+            setShippingServiceable(false);
+            setShippingReason(res.reason ?? "unserviceable");
+            setShippingMethodId(null);
+            setShippingTotal(0);
+          }
+        } catch (err) {
+          if (ignore) return;
+          setShippingOptions([]);
+          setShippingServiceable(false);
+          setShippingError(err instanceof Error ? err.message : "Failed to resolve shipping options");
+          setShippingMethodId(null);
+          setShippingTotal(0);
+        } finally {
+          if (!ignore) {
+            setIsLoadingShippingOptions(false);
+          }
+        }
+      };
+
+      runFetch();
     }
-  }, [step, address.state, address.city, refreshShippingOptions, defaultAddress]);
+
+    return () => {
+      ignore = true;
+    };
+  }, [step, address.state, address.city, address.country, subtotal, defaultAddress]);
 
   // Step Navigation Controls
   const goToStep = useCallback(

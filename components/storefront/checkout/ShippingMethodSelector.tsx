@@ -198,10 +198,10 @@ export function ShippingMethodSelector({
                 type="button"
                 onClick={() => setIsExpanded(true)}
                 aria-expanded={false}
-                className="flex items-center gap-1.5 text-xs font-semibold text-[var(--kit-accent)] hover:underline pt-0.5 px-1 min-h-[36px] transition-colors"
+                className="mt-2 flex items-center justify-center sm:justify-start gap-2 text-xs font-bold text-[var(--kit-accent)] hover:text-[var(--kit-accent-hover)] py-2 px-3.5 rounded-xl bg-[var(--kit-accent)]/10 hover:bg-[var(--kit-accent)]/15 border border-[var(--kit-accent)]/20 transition-all cursor-pointer min-h-[38px] w-full sm:w-auto"
               >
                 <span>See all shipping methods ({options.length})</span>
-                <ChevronDown className="h-3.5 w-3.5" />
+                <ChevronDown className="h-4 w-4 shrink-0" />
               </button>
             </div>
           ) : (
@@ -214,7 +214,7 @@ export function ShippingMethodSelector({
                   type="button"
                   onClick={() => setIsExpanded(false)}
                   aria-expanded={true}
-                  className="flex items-center gap-1.5 text-xs font-semibold text-[var(--kit-muted-fg)] hover:text-[var(--kit-text-primary)] px-1 min-h-[36px] transition-colors"
+                  className="flex items-center gap-1.5 text-xs font-semibold text-[var(--kit-muted-fg)] hover:text-[var(--kit-text-primary)] py-1.5 px-3 rounded-lg hover:bg-[var(--kit-surface)] border border-transparent hover:border-[var(--kit-border)] transition-all cursor-pointer min-h-[36px]"
                 >
                   <span>Show less</span>
                   <ChevronUp className="h-3.5 w-3.5" />

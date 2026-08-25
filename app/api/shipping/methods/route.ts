@@ -14,12 +14,13 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const state = searchParams.get("state");
     const city = searchParams.get("city");
+    const country = searchParams.get("country") ?? "NG";
     const subtotalStr = searchParams.get("subtotal");
-    const subtotal = subtotalStr ? parseInt(subtotalStr, 10) || 0 : 0;
+    const subtotal = subtotalStr ? parseFloat(subtotalStr) || 0 : 0;
 
     if (state || city) {
       const result = await shippingService.resolveShippingOptionsForAddress(
-        { state: state ?? undefined, city: city ?? undefined },
+        { state: state ?? undefined, city: city ?? undefined, country: country ?? undefined },
         subtotal
       );
       return NextResponse.json({ success: true, ...result });
