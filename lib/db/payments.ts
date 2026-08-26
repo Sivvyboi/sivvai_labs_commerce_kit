@@ -1,5 +1,4 @@
 import "server-only";
-import { createClient } from "../supabase/server";
 import { createAdminClient } from "../supabase/admin";
 import type { Database } from "@/types";
 
@@ -40,11 +39,25 @@ export async function updatePaymentAttempt(
 export async function findPaymentAttemptByReference(
   reference: string
 ): Promise<PaymentAttemptRow | null> {
-  const supabase = await createClient();
+  const supabase = createAdminClient();
   const { data, error } = await supabase
     .from("payment_attempts")
     .select("*")
     .eq("provider_reference", reference)
+    .maybeSingle();
+
+  if (error || !data) return null;
+  return data;
+}
+
+export async function findPaymentAttemptByIdempotencyKey(
+  idempotencyKey: string
+): Promise<PaymentAttemptRow | null> {
+  const supabase = createAdminClient();
+  const { data, error } = await supabase
+    .from("payment_attempts")
+    .select("*")
+    .eq("idempotency_key", idempotencyKey)
     .maybeSingle();
 
   if (error || !data) return null;

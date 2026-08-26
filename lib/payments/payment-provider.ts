@@ -10,6 +10,7 @@ export interface InitializePaymentParams {
 export interface InitializePaymentResult {
   authorizationUrl: string;
   reference: string;
+  accessCode?: string;
   providerReference?: string;
 }
 
@@ -17,6 +18,7 @@ export interface VerifyPaymentResult {
   status: "success" | "failed" | "pending";
   reference: string;
   amount: number;
+  currency?: string;
   metadata?: Record<string, unknown>;
 }
 

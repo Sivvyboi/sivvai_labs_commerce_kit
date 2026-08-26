@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { nairaToKobo, koboToNaira } from "@/lib/utils/money";
 import type {
   PaymentProvider,
   InitializePaymentParams,
@@ -20,6 +21,7 @@ export class PaystackProvider implements PaymentProvider {
       return {
         authorizationUrl: `https://checkout.paystack.com/mock-${params.reference}`,
         reference: params.reference,
+        accessCode: `mock-access-${params.reference}`,
       };
     }
 
@@ -31,7 +33,7 @@ export class PaystackProvider implements PaymentProvider {
       },
       body: JSON.stringify({
         email: params.email,
-        amount: Math.round(params.amount * 100), // convert to kobo
+        amount: nairaToKobo(params.amount), // convert to kobo
         reference: params.reference,
         callback_url: params.callbackUrl,
         metadata: params.metadata,
@@ -46,6 +48,7 @@ export class PaystackProvider implements PaymentProvider {
     return {
       authorizationUrl: data.data.authorization_url,
       reference: data.data.reference,
+      accessCode: data.data.access_code,
     };
   }
 
@@ -55,6 +58,7 @@ export class PaystackProvider implements PaymentProvider {
         status: "success",
         reference,
         amount: 0,
+        currency: "NGN",
       };
     }
 
@@ -71,7 +75,8 @@ export class PaystackProvider implements PaymentProvider {
     return {
       status: isSuccess ? "success" : "failed",
       reference: data.data.reference,
-      amount: data.data.amount / 100,
+      amount: koboToNaira(data.data.amount),
+      currency: data.data.currency || "NGN",
       metadata: data.data.metadata,
     };
   }

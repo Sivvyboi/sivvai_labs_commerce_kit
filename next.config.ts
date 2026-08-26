@@ -9,6 +9,7 @@ const nextConfig: NextConfig = {
     "localhost",
     "127.0.0.1",
     "192.168.18.2",
+    "192.168.18.3",
     "192.168.18.4"
 
   ],

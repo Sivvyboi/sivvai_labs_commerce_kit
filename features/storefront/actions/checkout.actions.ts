@@ -112,7 +112,7 @@ export async function applyPromoAction(promoCode: string, subtotal: number) {
 
 /**
  * Initiates payment with the selected provider (Paystack, Flutterwave, Bank Transfer).
- * Creates payment attempt and returns authorization redirect URL.
+ * Creates payment attempt (status: 'initiated'), initializes with provider, returns accessCode/reference.
  */
 export async function initiatePaymentAction(params: {
   checkoutSessionId: string;
@@ -121,11 +121,42 @@ export async function initiatePaymentAction(params: {
 }) {
   try {
     const result = await paymentService.initiatePayment(params);
-    return { success: true, ...result };
+    return {
+      success: true,
+      authorizationUrl: result.authorizationUrl,
+      reference: result.reference,
+      accessCode: result.accessCode,
+      paymentAttemptId: result.paymentAttempt.id,
+    };
   } catch (err) {
     return {
       success: false,
       error: err instanceof Error ? err.message : "Failed to initiate payment",
+    };
+  }
+}
+
+/**
+ * Verifies payment with Paystack/provider and executes idempotent order fulfillment.
+ * Invoked by client after Paystack Popup V2 reports success.
+ */
+export async function verifyPaymentAction(params: { reference: string }) {
+  try {
+    if (!params.reference || !params.reference.trim()) {
+      return { success: false, error: "Payment reference is required for verification" };
+    }
+
+    const result = await paymentService.verifyAndFulfillPayment(params.reference.trim());
+    return {
+      success: true,
+      status: result.status,
+      orderId: result.orderId,
+      orderNumber: result.orderNumber,
+    };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to verify payment",
     };
   }
 }

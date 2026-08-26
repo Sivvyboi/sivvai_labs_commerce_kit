@@ -55,6 +55,7 @@ export function CheckoutClient({ customer }: CheckoutClientProps) {
     subtotal,
     grandTotal,
     isSubmitting,
+    paymentStatusLabel,
     errorMessage,
     goToStep,
     nextStep,
@@ -282,6 +283,7 @@ export function CheckoutClient({ customer }: CheckoutClientProps) {
             <PlaceOrderButton
               grandTotal={grandTotal}
               isSubmitting={isSubmitting}
+              statusLabel={paymentStatusLabel || undefined}
               onClick={submitCheckout}
               providerName={paymentProvider === "bank_transfer" ? "Bank Transfer" : paymentProvider === "flutterwave" ? "Flutterwave" : "Paystack"}
             />

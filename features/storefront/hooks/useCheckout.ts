@@ -20,6 +20,7 @@ import {
   beginCheckoutAction,
   applyPromoAction,
   initiatePaymentAction,
+  verifyPaymentAction,
 } from "@/features/storefront/actions/checkout.actions";
 import type { InitiateCheckoutInput } from "@/lib/validation";
 import type { ResolvedShippingOption } from "@/services/shipping-service";
@@ -168,6 +169,7 @@ export function useCheckout(options?: { customer?: CustomerWithAddresses | null 
     return typeof d?.checkoutSessionId === "string" ? d.checkoutSessionId : null;
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [paymentStatusLabel, setPaymentStatusLabel] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Save draft state to localStorage on update
@@ -473,7 +475,7 @@ export function useCheckout(options?: { customer?: CustomerWithAddresses | null 
     setDiscountTotal(0);
   }, []);
 
-  // Final Submit & Payment Initiation (Architecture B: Create Checkout Session -> Initiate Payment -> Redirect)
+  // Final Submit & Payment Initiation (Architecture: Session -> Pre-persist Attempt -> Popup V2 -> Verify -> Confirm)
   const submitCheckout = useCallback(async () => {
     if (!cart?.id) {
       setErrorMessage("Cart session missing. Please add items to your cart.");
@@ -481,10 +483,11 @@ export function useCheckout(options?: { customer?: CustomerWithAddresses | null 
     }
 
     setIsSubmitting(true);
+    setPaymentStatusLabel("Creating checkout session...");
     setErrorMessage(null);
 
     try {
-      // 1. Begin checkout session (finds/creates customer, reserves inventory)
+      // 1. Begin checkout session (finds/creates customer, reserves inventory, locks totals)
       const checkoutInput: InitiateCheckoutInput = {
         cartId: cart.id,
         email: contact.email,
@@ -511,7 +514,8 @@ export function useCheckout(options?: { customer?: CustomerWithAddresses | null 
       const activeSessionId = (sessionRes as { checkoutSession: { id: string } }).checkoutSession.id;
       setCheckoutSessionId(activeSessionId);
 
-      // 2. Initiate Payment
+      // 2. Initiate Payment (Pre-persists attempt in DB, initializes transaction server-side)
+      setPaymentStatusLabel("Initializing payment...");
       const callbackUrl = `${window.location.origin}/checkout/confirmation`;
       const payRes = await initiatePaymentAction({
         checkoutSessionId: activeSessionId,
@@ -523,27 +527,88 @@ export function useCheckout(options?: { customer?: CustomerWithAddresses | null 
         throw new Error(payRes.error ?? "Failed to initiate payment");
       }
 
-      // Clear draft on successful payment initiation
+      // 3. If Paystack provider with accessCode, open Paystack Popup V2
+      if (paymentProvider === "paystack" && payRes.accessCode) {
+        setPaymentStatusLabel("Opening Paystack...");
+
+        // Dynamic import of PaystackPop for Next.js browser execution
+        const PaystackPopModule = await import("@paystack/inline-js");
+        const PaystackPop = PaystackPopModule.default || PaystackPopModule;
+        const popup = new PaystackPop();
+
+        popup.resumeTransaction(payRes.accessCode, {
+          onLoad: () => {
+            setPaymentStatusLabel("Awaiting payment...");
+          },
+          onCancel: () => {
+            setIsSubmitting(false);
+            setPaymentStatusLabel(null);
+            setErrorMessage("Payment was cancelled. You may try again or choose another payment method.");
+          },
+          onError: (error: { message?: string }) => {
+            setIsSubmitting(false);
+            setPaymentStatusLabel(null);
+            setErrorMessage(error?.message || "Payment window failed to load.");
+          },
+          onSuccess: async (tx: { reference?: string }) => {
+            const confirmedRef = tx.reference || payRes.reference;
+            setPaymentStatusLabel("Verifying payment...");
+
+            try {
+              const verifyRes = await verifyPaymentAction({ reference: confirmedRef });
+              if (!verifyRes.success) {
+                throw new Error(verifyRes.error || "Payment verification failed");
+              }
+
+              setPaymentStatusLabel("Payment confirmed!");
+              try {
+                localStorage.removeItem(LOCAL_STORAGE_KEY);
+              } catch {
+                // Ignore
+              }
+
+              router.push(`/checkout/confirmation?session_id=${activeSessionId}`);
+            } catch (vErr) {
+              setIsSubmitting(false);
+              setPaymentStatusLabel(null);
+              setErrorMessage(vErr instanceof Error ? vErr.message : "Payment verification failed");
+            }
+          },
+        });
+
+        return;
+      }
+
+      // 4. Fallback for redirect providers (Flutterwave) or manual payment (Bank Transfer)
       try {
         localStorage.removeItem(LOCAL_STORAGE_KEY);
       } catch {
         // Ignore
       }
 
-      // If provider returns authorization URL (Paystack/Flutterwave), redirect
-      const authUrl = "authorizationUrl" in payRes ? (payRes as { authorizationUrl: string }).authorizationUrl : null;
-      if (authUrl) {
+      const authUrl = payRes.authorizationUrl;
+      if (authUrl && !authUrl.includes("mock-")) {
         window.location.href = authUrl;
       } else {
-        // Fallback for Bank Transfer / manual providers
         router.push(`/checkout/confirmation?session_id=${activeSessionId}`);
       }
     } catch (err) {
-      setErrorMessage(err instanceof Error ? err.message : "An error occurred during checkout");
-    } finally {
       setIsSubmitting(false);
+      setPaymentStatusLabel(null);
+      setErrorMessage(err instanceof Error ? err.message : "An error occurred during checkout");
     }
-  }, [cart, contact, address, addressMode, selectedAddressId, saveAddressToAccount, shippingMethodId, promoCode, paymentProvider, router]);
+  }, [
+    cart,
+    contact,
+    address,
+    addressMode,
+    selectedAddressId,
+    saveAddressToAccount,
+    shippingMethodId,
+    promoCode,
+    paymentProvider,
+    router,
+  ]);
 
   return {
     step,
@@ -567,6 +632,7 @@ export function useCheckout(options?: { customer?: CustomerWithAddresses | null 
     subtotal,
     grandTotal,
     isSubmitting,
+    paymentStatusLabel,
     errorMessage,
     checkoutSessionId,
     goToStep,

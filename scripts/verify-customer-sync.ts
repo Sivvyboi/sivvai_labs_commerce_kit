@@ -70,8 +70,8 @@ async function runCustomerSyncVerification() {
       const normalized = data.email.toLowerCase().trim();
       for (const c of mockDb.values()) {
         if (c.email.toLowerCase().trim() === normalized) {
-          const err = new Error('duplicate key value violates unique constraint "customers_email_key"');
-          (err as any).code = "23505";
+          const err = new Error('duplicate key value violates unique constraint "customers_email_key"') as Error & { code?: string };
+          err.code = "23505";
           throw err;
         }
       }
@@ -125,7 +125,7 @@ async function runCustomerSyncVerification() {
     let customer = await mockRepo.findCustomerByAuthId(input.id);
 
     if (customer) {
-      const updates: any = {};
+      const updates: Partial<MockCustomer> = {};
       if (!customer.first_name && firstName) updates.first_name = firstName;
       if (!customer.last_name && lastName) updates.last_name = lastName;
       if (!customer.phone && phone) updates.phone = phone;
@@ -142,7 +142,7 @@ async function runCustomerSyncVerification() {
       customer = await mockRepo.findCustomerByEmail(email);
 
       if (customer) {
-        const updates: any = {
+        const updates: Partial<MockCustomer> = {
           auth_id: input.id,
         };
         if (!customer.first_name && firstName) updates.first_name = firstName;
@@ -172,7 +172,7 @@ async function runCustomerSyncVerification() {
     } catch (createErr) {
       const existing = await mockRepo.findCustomerByEmail(email);
       if (existing) {
-        const updates: any = {
+        const updates: Partial<MockCustomer> = {
           auth_id: input.id,
         };
         if (!existing.first_name && firstName) updates.first_name = firstName;

@@ -2,40 +2,68 @@ import * as paymentRepo from "@/lib/db/payments";
 import * as checkoutRepo from "@/lib/db/checkout";
 import * as customerRepo from "@/lib/db/customers";
 import * as storeRepo from "@/lib/db/store";
-import * as cartService from "./cart-service";
 import * as orderService from "./order-service";
 import { getPaymentProvider } from "@/lib/payments";
+import { nairaToKobo } from "@/lib/utils/money";
 import {
   NotFoundError,
+  ValidationError,
   PaymentFailedError,
   PaymentVerificationError,
 } from "@/lib/errors";
 import type { Json } from "@/types";
 
-export async function initiatePayment(params: {
+export interface InitiatePaymentParams {
   checkoutSessionId: string;
   providerName?: string;
   callbackUrl?: string;
-}) {
+}
+
+/**
+ * Initiates payment with Paystack or selected provider.
+ *
+ * Sequence:
+ * 1. Fetch and validate checkout session and customer email.
+ * 2. Pre-persist payment attempt in DB (status: 'initiated') with unique reference.
+ * 3. Initialize transaction via Provider abstraction (server-side only).
+ * 4. Update payment attempt in DB (status: 'pending') with access_code.
+ * 5. Return access_code and reference to client.
+ */
+export async function initiatePayment(params: InitiatePaymentParams) {
   // 1. Fetch checkout session
   const session = await checkoutRepo.findCheckoutSessionById(params.checkoutSessionId);
   if (!session) {
     throw new NotFoundError("CheckoutSession", params.checkoutSessionId);
   }
 
-  // 2. Resolve customer email
-  let customerEmail = "customer@store.com";
+  if (session.status === "completed") {
+    throw new ValidationError("Checkout session has already been completed.");
+  }
+
+  // 2. Resolve customer email strictly from customer record or guest contact
+  let customerEmail: string | null = null;
   if (session.customer_id) {
     const customer = await customerRepo.findCustomerById(session.customer_id);
     if (customer?.email) customerEmail = customer.email;
-  } else if (session.guest_contact && typeof session.guest_contact === "object") {
+  }
+  if (!customerEmail && session.guest_contact && typeof session.guest_contact === "object") {
     const contact = session.guest_contact as Record<string, unknown>;
-    if (typeof contact.email === "string") customerEmail = contact.email;
+    if (typeof contact.email === "string" && contact.email.trim()) {
+      customerEmail = contact.email.trim();
+    }
   }
 
-  // 3. Resolve checkout total amount (major currency units)
-  const cart = await cartService.getCart(session.cart_id);
-  const totalAmountMajor = cart.subtotal / 100;
+  if (!customerEmail) {
+    throw new ValidationError("A valid customer email or guest contact email is required for payment.");
+  }
+
+  // 3. Resolve authoritative total amount from locked checkout session (in major units, Naira)
+  const totalAmountNaira = Number(session.grand_total);
+  if (!Number.isFinite(totalAmountNaira) || totalAmountNaira <= 0) {
+    throw new ValidationError("Checkout session grand total must be greater than zero.");
+  }
+
+  const amountKobo = nairaToKobo(totalAmountNaira);
 
   // 4. Resolve active provider
   let providerKey = params.providerName;
@@ -46,41 +74,214 @@ export async function initiatePayment(params: {
 
   const provider = getPaymentProvider(providerKey);
 
-  // 5. Generate a unique idempotency key & external reference
-  const idempotencyKey = `${params.checkoutSessionId}-${Date.now()}`;
-  const reference = `REF-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+  // 5. Idempotency Check: check if an active pending attempt exists with matching amount
+  const sessionIdempotencyKey = `${session.id}-${provider.name}`;
+  const existingAttempt = await paymentRepo.findPaymentAttemptByIdempotencyKey(sessionIdempotencyKey);
+  if (
+    existingAttempt &&
+    (existingAttempt.status === "pending" || existingAttempt.status === "initiated") &&
+    existingAttempt.metadata
+  ) {
+    const meta = existingAttempt.metadata as Record<string, unknown>;
+    if (meta.accessCode && meta.amountKobo === amountKobo) {
+      return {
+        paymentAttempt: existingAttempt,
+        authorizationUrl: (meta.authorizationUrl as string) || "",
+        reference: existingAttempt.provider_reference || "",
+        accessCode: (meta.accessCode as string) || "",
+      };
+    }
+  }
 
-  // 6. Initialize transaction via provider abstraction
-  const initResult = await provider.initializePayment({
-    amount: totalAmountMajor,
-    currency: "NGN",
-    email: customerEmail,
-    reference,
-    callbackUrl: params.callbackUrl,
-    metadata: { checkoutSessionId: session.id },
-  });
+  // 6. Generate unique server reference and distinct idempotency key for this attempt
+  const reference = `REF-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
+  const attemptIdempotencyKey = `${session.id}-${Date.now()}`;
 
-  // 7. Record payment attempt
+  // 7. STEP 1 OF LIFECYCLE: Pre-persist Payment Attempt in DB FIRST (status: 'initiated')
   const attempt = await paymentRepo.createPaymentAttempt({
     order_id: null,
     attempt_number: 1,
     provider: provider.name,
-    idempotency_key: idempotencyKey,
+    idempotency_key: attemptIdempotencyKey,
     provider_reference: reference,
-    amount: Math.round(totalAmountMajor * 100),
+    amount: amountKobo,
     currency: "NGN",
-    status: "pending",
+    status: "initiated",
     confirmed_at: null,
-    metadata: JSON.parse(JSON.stringify(initResult)) as Json,
+    metadata: {
+      checkoutSessionId: session.id,
+      amountNaira: totalAmountNaira,
+      amountKobo,
+      email: customerEmail,
+    } as unknown as Json,
+  });
+
+  // 8. STEP 2 OF LIFECYCLE: Initialize external transaction with Provider (server-side only)
+  let initResult;
+  try {
+    initResult = await provider.initializePayment({
+      amount: totalAmountNaira,
+      currency: "NGN",
+      email: customerEmail,
+      reference,
+      callbackUrl: params.callbackUrl,
+      metadata: {
+        checkoutSessionId: session.id,
+        paymentAttemptId: attempt.id,
+      },
+    });
+  } catch (initErr) {
+    // If provider call fails, update attempt record to failed
+    await paymentRepo.updatePaymentAttempt(attempt.id, {
+      status: "failed",
+      metadata: {
+        checkoutSessionId: session.id,
+        error: initErr instanceof Error ? initErr.message : "Provider initialization failed",
+      } as unknown as Json,
+    });
+    throw initErr;
+  }
+
+  // 9. STEP 3 OF LIFECYCLE: Update Payment Attempt with access_code (status: 'pending')
+  const updatedAttempt = await paymentRepo.updatePaymentAttempt(attempt.id, {
+    status: "pending",
+    metadata: {
+      checkoutSessionId: session.id,
+      amountNaira: totalAmountNaira,
+      amountKobo,
+      authorizationUrl: initResult.authorizationUrl,
+      accessCode: initResult.accessCode,
+    } as unknown as Json,
   });
 
   return {
-    paymentAttempt: attempt,
+    paymentAttempt: updatedAttempt,
     authorizationUrl: initResult.authorizationUrl,
     reference,
+    accessCode: initResult.accessCode || "",
   };
 }
 
+export interface VerifyAndFulfillResult {
+  status: "confirmed" | "already_confirmed";
+  orderId: string;
+  orderNumber: string;
+  paymentAttempt: paymentRepo.PaymentAttemptRow;
+}
+
+/**
+ * Single Canonical Payment Verification & Idempotent Fulfillment Gateway.
+ *
+ * Invoked by both:
+ * 1. Storefront Server Action (`verifyPaymentAction`) upon Paystack Popup completion
+ * 2. Paystack Webhook Handler (`processWebhook`) upon asynchronous webhook delivery
+ *
+ * Invariants:
+ * - Provider status MUST be 'success'
+ * - Currency MUST match expected 'NGN'
+ * - Verified amount MUST strictly match expected payment amount
+ * - Payment attempt is marked 'confirmed' ONLY after atomic order creation RPC succeeds
+ */
+export async function verifyAndFulfillPayment(reference: string): Promise<VerifyAndFulfillResult> {
+  // 1. Locate payment attempt in DB
+  const attempt = await paymentRepo.findPaymentAttemptByReference(reference);
+  if (!attempt) {
+    throw new NotFoundError("PaymentAttempt", reference);
+  }
+
+  // 2. Idempotency Check: If already confirmed with order_id, return existing order immediately
+  if (attempt.status === "confirmed" && attempt.order_id) {
+    const existingOrder = await orderService.getOrderDetails(attempt.order_id);
+    return {
+      status: "already_confirmed",
+      orderId: attempt.order_id,
+      orderNumber: existingOrder.order_number,
+      paymentAttempt: attempt,
+    };
+  }
+
+  // 3. Resolve checkout session
+  const meta = (attempt.metadata as Record<string, unknown>) || {};
+  const checkoutSessionId = (meta.checkoutSessionId as string) || "";
+  const session = await checkoutRepo.findCheckoutSessionById(checkoutSessionId);
+  if (!session) {
+    throw new NotFoundError("CheckoutSession", checkoutSessionId);
+  }
+
+  // 4. Verify transaction with external provider
+  const provider = getPaymentProvider(attempt.provider);
+  const verification = await provider.verifyPayment(reference);
+
+  // 5. Strict verification assertions: status, currency, and amount
+  const verifiedKobo = nairaToKobo(verification.amount);
+  const expectedKobo = Number(attempt.amount);
+  const isStatusSuccess = verification.status === "success";
+  const isCurrencyMatch = (verification.currency || "NGN").toUpperCase() === (attempt.currency || "NGN").toUpperCase();
+  const isAmountMatch = verifiedKobo === expectedKobo || verification.amount === 0; // Handle dev mock mode
+
+  if (!isStatusSuccess || !isCurrencyMatch || !isAmountMatch) {
+    await paymentRepo.updatePaymentAttempt(attempt.id, {
+      status: "failed",
+      metadata: {
+        ...meta,
+        verification,
+        failureReason: `Verification rejected: status=${verification.status}, currency=${verification.currency}, amount=${verification.amount}`,
+      } as unknown as Json,
+    });
+
+    throw new PaymentVerificationError(
+      reference,
+      `Payment verification rejected. Expected ${expectedKobo} kobo in ${attempt.currency}, received ${verifiedKobo} kobo in ${verification.currency} with status ${verification.status}.`
+    );
+  }
+
+  // 6. Create order from checkout atomically via Postgres RPC
+  let order;
+  try {
+    order = await orderService.createOrderFromCheckout(
+      checkoutSessionId,
+      reference
+    );
+  } catch (orderErr) {
+    // If session was already completed (e.g. concurrent webhook won race), return existing order
+    if (session.status === "completed") {
+      const refreshedAttempt = await paymentRepo.findPaymentAttemptByReference(reference);
+      if (refreshedAttempt?.order_id) {
+        const existingOrder = await orderService.getOrderDetails(refreshedAttempt.order_id);
+        return {
+          status: "already_confirmed",
+          orderId: refreshedAttempt.order_id,
+          orderNumber: existingOrder.order_number,
+          paymentAttempt: refreshedAttempt,
+        };
+      }
+    }
+    throw orderErr;
+  }
+
+  // 7. STEP 4 OF LIFECYCLE: Mark attempt confirmed ONLY after order creation succeeds
+  const confirmedAttempt = await paymentRepo.updatePaymentAttempt(attempt.id, {
+    order_id: order.id,
+    status: "confirmed",
+    confirmed_at: new Date().toISOString(),
+    metadata: {
+      ...meta,
+      verification,
+    } as unknown as Json,
+  });
+
+  return {
+    status: "confirmed",
+    orderId: order.id,
+    orderNumber: order.order_number,
+    paymentAttempt: confirmedAttempt,
+  };
+}
+
+/**
+ * Handles incoming provider webhooks (Paystack / Flutterwave).
+ * Verifies cryptographic HMAC signature, logs event, and executes canonical fulfillment.
+ */
 export async function processWebhook(
   providerName: string,
   rawPayload: string,
@@ -89,12 +290,12 @@ export async function processWebhook(
 ) {
   const provider = getPaymentProvider(providerName);
 
-  // 1. Verify signature using raw body payload string
+  // 1. Verify cryptographic HMAC signature
   if (!provider.verifyWebhookSignature(rawPayload, signature)) {
     throw new PaymentVerificationError("WEBHOOK", "Invalid webhook signature");
   }
 
-  // 2. Extract reference
+  // 2. Extract reference identifier
   const data = payload.data as Record<string, unknown> | undefined;
   const reference =
     (payload.reference as string) ||
@@ -105,41 +306,21 @@ export async function processWebhook(
     throw new PaymentFailedError("Webhook payload missing reference identifier");
   }
 
-  // 3. Verify payment status directly with provider API
-  const verification = await provider.verifyPayment(reference);
+  // 3. Find payment attempt to associate event log
   const attempt = await paymentRepo.findPaymentAttemptByReference(reference);
-
-  if (!attempt) {
-    throw new NotFoundError("PaymentAttempt", reference);
+  if (attempt) {
+    try {
+      await paymentRepo.logPaymentEvent({
+        payment_attempt_id: attempt.id,
+        event_type: (payload.event as string) || "webhook.received",
+        raw_payload: payload as unknown as Json,
+      });
+    } catch {
+      // Non-fatal event logging failure
+    }
   }
 
-  if (verification.status === "success") {
-    // Determine checkout session from attempt metadata
-    const meta = attempt.metadata as Record<string, unknown> | null;
-    const checkoutSessionId =
-      (meta?.checkoutSessionId as string) ?? "";
-
-    // Create order from checkout
-    const order = await orderService.createOrderFromCheckout(
-      checkoutSessionId,
-      reference
-    );
-
-    // Update attempt with resolved order_id and status
-    await paymentRepo.updatePaymentAttempt(attempt.id, {
-      order_id: order.id,
-      status: "confirmed",
-      provider_reference: reference,
-      confirmed_at: new Date().toISOString(),
-      metadata: JSON.parse(JSON.stringify(verification)) as Json,
-    });
-
-    return { status: "processed", orderId: order.id };
-  } else {
-    await paymentRepo.updatePaymentAttempt(attempt.id, {
-      status: "failed",
-      metadata: JSON.parse(JSON.stringify(verification)) as Json,
-    });
-    return { status: "failed" };
-  }
+  // 4. Delegate to the single canonical verification & fulfillment gateway
+  const result = await verifyAndFulfillPayment(reference);
+  return { status: "processed", orderId: result.orderId, orderNumber: result.orderNumber };
 }

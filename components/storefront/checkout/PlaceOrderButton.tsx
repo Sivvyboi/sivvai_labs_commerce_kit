@@ -4,7 +4,8 @@
  * components/storefront/checkout/PlaceOrderButton.tsx
  *
  * Client Component. Submit button executing session initiation,
- * inventory reservation, payment attempt creation, and provider redirect.
+ * inventory reservation, payment attempt creation, Paystack Popup V2,
+ * and server-side payment verification.
  */
 
 import { Zap, Loader2, Lock } from "lucide-react";
@@ -17,6 +18,7 @@ export interface PlaceOrderButtonProps {
   onClick: () => void;
   disabled?: boolean;
   providerName?: string;
+  statusLabel?: string;
   className?: string;
 }
 
@@ -26,8 +28,11 @@ export function PlaceOrderButton({
   onClick,
   disabled = false,
   providerName = "Paystack",
+  statusLabel,
   className,
 }: PlaceOrderButtonProps) {
+  const activeLabel = statusLabel || (isSubmitting ? "Processing..." : null);
+
   return (
     <div className={cn("space-y-2", className)}>
       <button
@@ -39,7 +44,7 @@ export function PlaceOrderButton({
         {isSubmitting ? (
           <>
             <Loader2 className="h-5 w-5 animate-spin" />
-            <span>Initiating Payment...</span>
+            <span>{activeLabel}</span>
           </>
         ) : (
           <>
