@@ -67,16 +67,10 @@ export default async function OrderConfirmationPage({
                 {session.id.slice(0, 8)}...
               </span>
             </div>
-            <div className="flex justify-between border-b border-[var(--kit-border)] pb-2 text-[var(--kit-muted-fg)]">
+            <div className="flex justify-between text-[var(--kit-muted-fg)]">
               <span>Status</span>
               <span className="font-bold text-emerald-500 uppercase">
                 {session.status}
-              </span>
-            </div>
-            <div className="flex justify-between text-[var(--kit-muted-fg)]">
-              <span>Items Reserved</span>
-              <span className="font-semibold text-[var(--kit-text-primary)]">
-                {session.inventory_reservations?.length ?? 0} item(s)
               </span>
             </div>
           </div>

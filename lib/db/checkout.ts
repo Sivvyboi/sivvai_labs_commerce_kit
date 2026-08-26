@@ -1,15 +1,10 @@
 import "server-only";
 import { createClient } from "../supabase/server";
 import type { Database } from "@/types";
-import type { InventoryReservationRow } from "./inventory";
 
 export type CheckoutSessionRow = Database["public"]["Tables"]["checkout_sessions"]["Row"];
 export type CheckoutSessionInsert = Database["public"]["Tables"]["checkout_sessions"]["Insert"];
 export type CheckoutSessionUpdate = Database["public"]["Tables"]["checkout_sessions"]["Update"];
-
-export type CheckoutSessionWithReservations = CheckoutSessionRow & {
-  inventory_reservations: InventoryReservationRow[];
-};
 
 export async function createCheckoutSession(
   data: CheckoutSessionInsert
@@ -27,16 +22,16 @@ export async function createCheckoutSession(
 
 export async function findCheckoutSessionById(
   id: string
-): Promise<CheckoutSessionWithReservations | null> {
+): Promise<CheckoutSessionRow | null> {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("checkout_sessions")
-    .select("*, inventory_reservations(*)")
+    .select("*")
     .eq("id", id)
     .single();
 
   if (error || !data) return null;
-  return (data as unknown) as CheckoutSessionWithReservations;
+  return data;
 }
 
 export async function updateCheckoutSession(
