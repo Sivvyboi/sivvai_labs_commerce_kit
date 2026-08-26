@@ -43,6 +43,11 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
     pathname === "/auth/forgot-password" ||
     pathname === "/auth/reset-password";
 
+  // Machine-to-machine webhooks bypass cookie / session management
+  if (pathname.startsWith("/api/webhooks")) {
+    return NextResponse.next();
+  }
+
   const isAdminRoute = pathname.startsWith("/admin");
 
   // Protection: redirect unauthenticated users away from protected admin routes
@@ -69,7 +74,8 @@ export const config = {
      * - favicon.ico   (browser favicon request)
      * - public folder files (images, fonts, robots.txt, etc.)
      * - /api/health   (monitoring — must never be blocked)
+     * - /api/webhooks (machine-to-machine webhooks — must never be intercepted)
      */
-    "/((?!_next/static|_next/image|favicon\\.ico|api/health|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|woff|woff2|ttf|otf|eot|mp4|webm)$).*)",
+    "/((?!_next/static|_next/image|favicon\\.ico|api/health|api/webhooks|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|woff|woff2|ttf|otf|eot|mp4|webm)$).*)",
   ],
 };
