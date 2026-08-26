@@ -1,7 +1,7 @@
 -- =============================================================================
 -- 20260826036_fix_order_rpc_shipping_snapshots.sql
--- Fix create_order_from_checkout_rpc to properly construct JSONB shipping snapshots
--- and preserve Phase B zone resolution semantics without hardcoding fake methods.
+-- Fix create_order_from_checkout_rpc to properly construct JSONB shipping snapshots,
+-- preserve Phase B zone resolution semantics, and align stock_movements column names.
 -- =============================================================================
 
 CREATE OR REPLACE FUNCTION create_order_from_checkout_rpc(
@@ -28,6 +28,7 @@ DECLARE
     v_zone_name TEXT := NULL;
     v_state TEXT := '';
     v_city TEXT := '';
+    v_inv_record_id UUID := NULL;
 BEGIN
     -- 1. Fetch & lock checkout session
     SELECT * INTO v_session
@@ -218,27 +219,34 @@ BEGIN
             v_line.unit_price_snapshot * v_line.quantity
         );
 
-        -- Deduct inventory on hand and release reservation
-        UPDATE inventory_records
-        SET on_hand_quantity = GREATEST(0, on_hand_quantity - v_line.quantity),
-            reserved_quantity = GREATEST(0, reserved_quantity - v_line.quantity),
-            updated_at = NOW()
+        -- Find inventory record for variant
+        SELECT id INTO v_inv_record_id
+        FROM inventory_records
         WHERE variant_id = v_line.variant_id;
 
-        -- Log stock movement
-        INSERT INTO stock_movements (
-            variant_id,
-            quantity_change,
-            type,
-            reference_id,
-            notes
-        ) VALUES (
-            v_line.variant_id,
-            -v_line.quantity,
-            'sale',
-            v_order_id,
-            'Atomic checkout order completion'
-        );
+        -- Deduct inventory on hand and release reservation
+        IF v_inv_record_id IS NOT NULL THEN
+            UPDATE inventory_records
+            SET on_hand_quantity = GREATEST(0, on_hand_quantity - v_line.quantity),
+                reserved_quantity = GREATEST(0, reserved_quantity - v_line.quantity),
+                updated_at = NOW()
+            WHERE id = v_inv_record_id;
+
+            -- Log stock movement
+            INSERT INTO stock_movements (
+                inventory_record_id,
+                movement_type,
+                quantity_delta,
+                reference_id,
+                reason
+            ) VALUES (
+                v_inv_record_id,
+                'outbound',
+                -v_line.quantity,
+                v_order_id,
+                'Order fulfillment sale'
+            );
+        END IF;
     END LOOP;
 
     -- 8. Update reservations status to converted
