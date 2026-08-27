@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getCurrentUser, getOrCreateCustomer } from "@/lib/auth/server-auth";
 import * as orderRepo from "@/lib/db/orders";
 import { Price } from "@/components/shared/Price";
+import { koboToNaira } from "@/lib/utils/money";
 import {
   ShoppingBag,
   Clock,
@@ -220,7 +221,7 @@ export default async function AccountOverviewPage() {
                   <div className="flex items-center gap-3 shrink-0">
                     <div className="text-right">
                       <Price
-                        amount={order.grand_total}
+                        amount={koboToNaira(order.grand_total)}
                         currency={order.currency}
                         className="font-bold text-[var(--kit-text-primary)]"
                       />

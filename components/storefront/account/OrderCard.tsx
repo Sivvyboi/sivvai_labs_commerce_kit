@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { OrderWithLines } from "@/lib/db/orders";
 import { Price } from "@/components/shared/Price";
+import { koboToNaira } from "@/lib/utils/money";
 import { ChevronRight, Calendar, Package } from "lucide-react";
 
 interface OrderCardProps {
@@ -33,7 +34,7 @@ export function OrderCard({ order }: OrderCardProps) {
       <div className="flex items-center justify-between pt-2 border-t border-[var(--kit-border)]">
         <div>
           <p className="text-[10px] text-[var(--kit-muted-fg)] uppercase">Total Amount</p>
-          <Price amount={order.grand_total} currency={order.currency} className="font-bold text-sm text-[var(--kit-text-primary)]" />
+          <Price amount={koboToNaira(order.grand_total)} currency={order.currency} className="font-bold text-sm text-[var(--kit-text-primary)]" />
         </div>
 
         <Link

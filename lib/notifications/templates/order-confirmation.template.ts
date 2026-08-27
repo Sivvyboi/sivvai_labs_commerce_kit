@@ -26,10 +26,11 @@ export interface OrderConfirmationTemplateData {
 }
 
 function formatMoney(amount: number, currency: string = "NGN"): string {
+  const major = amount / 100;
   if (currency.toUpperCase() === "NGN") {
-    return `₦${amount.toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    return `₦${major.toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   }
-  return `${currency} ${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return `${currency} ${major.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 export function renderOrderConfirmationEmail(data: OrderConfirmationTemplateData): {

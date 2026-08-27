@@ -1,4 +1,4 @@
-﻿import fs from 'fs';
+import fs from 'fs';
 import path from 'path';
 import { createClient } from '@supabase/supabase-js';
 
@@ -16,21 +16,27 @@ for (const l of lines) {
   }
 }
 
-const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
+const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
 
 async function main() {
-  const { data: orders } = await sb.from('orders').select('order_number,subtotal,shipping_total,grand_total,created_at').order('created_at', { ascending: false }).limit(5);
-  console.log('\nRecent Orders (money_amount = kobo):');
-  for (const o of (orders || [])) {
-    const sub = Number(o.subtotal);
-    const ship = Number(o.shipping_total);
-    const grand = Number(o.grand_total);
-    console.log('  ' + o.order_number + ': subtotal=' + sub + ' kobo (N' + (sub/100) + '), shipping=' + ship + ' kobo (N' + (ship/100) + '), grand=' + grand + ' kobo (N' + (grand/100) + ')');
-  }
-  const { data: sessions } = await sb.from('checkout_sessions').select('id,status,subtotal,shipping_total,grand_total,created_at').order('created_at', { ascending: false }).limit(3);
-  console.log('\nRecent Checkout Sessions (INTEGER = naira):');
-  for (const s of (sessions || [])) {
-    console.log('  ' + s.id + ' [' + s.status + ']: subtotal=N' + s.subtotal + ', shipping=N' + s.shipping_total + ', grand=N' + s.grand_total);
+  const { data: order } = await sb
+    .from('orders')
+    .select('*, order_lines(*)')
+    .or('order_number.eq.ORD-20260827-68570,id.eq.05d82c77-2994-43b4-9ce0-e1b309d07500')
+    .single();
+
+  console.log('\n=== EXACT STORED ORDER DATA ===');
+  console.log('Order Number:    ', order?.order_number);
+  console.log('Order ID:        ', order?.id);
+  console.log('Currency:        ', order?.currency);
+  console.log('subtotal:        ', order?.subtotal);
+  console.log('shipping_total:  ', order?.shipping_total);
+  console.log('discount_total:  ', order?.discount_total);
+  console.log('tax_total:       ', order?.tax_total);
+  console.log('grand_total:     ', order?.grand_total);
+  console.log('\nOrder Lines:');
+  for (const line of (order?.order_lines || [])) {
+    console.log('  Line: ' + line.product_name_snapshot + ' | qty: ' + line.quantity + ' | unit_price_snapshot: ' + line.unit_price_snapshot + ' | line_total: ' + line.line_total);
   }
 }
 main().catch(console.error);

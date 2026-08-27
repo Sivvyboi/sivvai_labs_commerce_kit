@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { OrderWithLines } from "@/lib/db/orders";
 import { Price } from "@/components/shared/Price";
+import { koboToNaira } from "@/lib/utils/money";
 import { ChevronRight, PackageCheck, Clock, AlertCircle } from "lucide-react";
 
 interface OrdersTableProps {
@@ -61,7 +62,7 @@ export function OrdersTable({ orders }: OrdersTableProps) {
               </td>
               <td className="py-3.5 px-4">{order.lines.length} item(s)</td>
               <td className="py-3.5 px-4 font-bold">
-                <Price amount={order.grand_total} currency={order.currency} />
+                <Price amount={koboToNaira(order.grand_total)} currency={order.currency} />
               </td>
               <td className="py-3.5 px-4">{getStatusBadge(order.status)}</td>
               <td className="py-3.5 px-4 text-right">
