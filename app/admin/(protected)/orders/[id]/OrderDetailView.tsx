@@ -53,14 +53,16 @@ export function OrderDetailView({ order }: OrderDetailViewProps) {
 
   async function handleStatusUpdate(e: React.FormEvent) {
     e.preventDefault();
-    await execute(() =>
+    const res = await execute(() =>
       updateOrderStatusAction({
         order_id: order.id,
         status: selectedStatus as typeof OrderStatusValues[number],
         note: statusNote.trim() || undefined,
       })
     );
-    setStatusNote("");
+    if (res?.success) {
+      setStatusNote("");
+    }
   }
 
   async function handleAddNote(e: React.FormEvent) {

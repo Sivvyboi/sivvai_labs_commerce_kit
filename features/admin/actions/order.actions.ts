@@ -5,7 +5,6 @@ import { requirePermission } from "@/lib/auth/admin-guard";
 import { logAuditEvent } from "@/services/authz-service";
 import * as orderService from "@/services/order-service";
 import * as notificationService from "@/services/notification-service";
-import { updateOrderStatus } from "@/lib/db/orders";
 import {
   UpdateOrderStatusAdminSchema,
   AddOrderNoteAdminSchema,
@@ -17,10 +16,12 @@ export async function updateOrderStatusAction(input: UpdateOrderStatusAdminInput
   try {
     await requirePermission("manage_orders");
     const validated = UpdateOrderStatusAdminSchema.parse(input);
-    const updated = await updateOrderStatus(validated.order_id, validated.status);
-    if (validated.note) {
-      await orderService.addOrderNote(validated.order_id, `Status updated to ${validated.status}: ${validated.note}`);
-    }
+    const updated = await orderService.updateOrderStatus(
+      validated.order_id,
+      validated.status,
+      validated.note || null,
+      "admin"
+    );
 
     // Send transactional order status update notification (non-fatal)
     try {
@@ -60,7 +61,7 @@ export async function addOrderNoteAction(input: AddOrderNoteAdminInput) {
     const note = await orderService.addOrderNote(
       validated.order_id,
       validated.body,
-      validated.author_type === "admin"
+      validated.author_type || "admin"
     );
 
     await logAuditEvent({

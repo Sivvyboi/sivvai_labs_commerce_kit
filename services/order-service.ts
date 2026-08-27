@@ -134,14 +134,23 @@ export async function getAllOrders(params: orderRepo.FindAllOrdersParams = {}) {
   return orderRepo.findAllOrders(params);
 }
 
+export async function updateOrderStatus(
+  orderId: string,
+  status: string,
+  note?: string | null,
+  actor = "admin"
+) {
+  return orderRepo.updateOrderStatus(orderId, status, { actor, note });
+}
+
 export async function addOrderNote(
   orderId: string,
   note: string,
-  isInternal = true
+  authorType = "admin"
 ) {
   return orderRepo.insertOrderNote({
     order_id: orderId,
     body: note,
-    author_type: isInternal ? "admin" : "system",
+    author_type: authorType,
   });
 }

@@ -121,8 +121,22 @@ export async function findCustomerOrders(customerId: string): Promise<OrderWithL
   return ((data || []) as unknown) as OrderWithLines[];
 }
 
-export async function updateOrderStatus(id: string, status: string): Promise<OrderRow> {
+export async function updateOrderStatus(
+  id: string,
+  status: string,
+  eventData?: { actor?: string; note?: string | null }
+): Promise<OrderRow> {
   const supabase = createAdminClient();
+
+  // Fetch previous status to record transition
+  const { data: current } = await supabase
+    .from("orders")
+    .select("status")
+    .eq("id", id)
+    .single();
+
+  const fromStatus = current?.status ?? status;
+
   const { data, error } = await supabase
     .from("orders")
     .update({ status })
@@ -131,6 +145,16 @@ export async function updateOrderStatus(id: string, status: string): Promise<Ord
     .single();
 
   if (error || !data) throw error || new Error("Failed to update order status");
+
+  // Record status event in order_status_events
+  await supabase.from("order_status_events").insert({
+    order_id: id,
+    from_status: fromStatus,
+    to_status: status,
+    actor: eventData?.actor ?? "admin",
+    note: eventData?.note ?? null,
+  });
+
   return data;
 }
 

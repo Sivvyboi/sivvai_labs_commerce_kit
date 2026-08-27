@@ -32,5 +32,5 @@ export default async function AdminOrderDetailPage({ params }: AdminOrderDetailP
     notFound();
   }
 
-  return <OrderDetailView order={order} />;
+  return <OrderDetailView key={`${order.id}-${order.status}`} order={order} />;
 }
