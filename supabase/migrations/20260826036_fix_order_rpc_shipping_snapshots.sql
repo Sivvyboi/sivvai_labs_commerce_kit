@@ -251,8 +251,7 @@ BEGIN
 
     -- 8. Update reservations status to converted
     UPDATE inventory_reservations
-    SET status = 'converted',
-        updated_at = NOW()
+    SET status = 'converted'
     WHERE checkout_session_id = p_checkout_session_id;
 
     -- 9. Mark checkout session completed

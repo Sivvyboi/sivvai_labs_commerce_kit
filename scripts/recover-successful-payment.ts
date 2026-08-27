@@ -9,7 +9,7 @@ import fs from "fs";
 import path from "path";
 import { createClient } from "@supabase/supabase-js";
 
-const REFERENCE = "REF-1787735884953-2513";
+const REFERENCE = "REF-1787827974049-6665";
 
 // 1. Load environment variables from .env.local if not already in process.env
 function loadEnv() {
