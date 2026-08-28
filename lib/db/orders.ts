@@ -45,10 +45,39 @@ export async function createOrder(
 
   if (orderError || !order) throw orderError || new Error("Failed to create order");
 
-  const preparedLines: OrderLineInsert[] = linesData.map((line) => ({
-    ...line,
-    order_id: order.id,
-  }));
+  const preparedLines: OrderLineInsert[] = await Promise.all(
+    linesData.map(async (line) => {
+      let imageUrl = line.image_url_snapshot;
+      if (!imageUrl && line.variant_id) {
+        const { data: variant } = await supabase
+          .from("product_variants")
+          .select("product_id")
+          .eq("id", line.variant_id)
+          .single();
+
+        if (variant?.product_id) {
+          const { data: img } = await supabase
+            .from("product_images")
+            .select("url")
+            .eq("product_id", variant.product_id)
+            .order("is_primary", { ascending: false })
+            .order("display_order", { ascending: true })
+            .limit(1)
+            .maybeSingle();
+
+          if (img?.url) {
+            imageUrl = img.url;
+          }
+        }
+      }
+
+      return {
+        ...line,
+        image_url_snapshot: imageUrl ?? null,
+        order_id: order.id,
+      };
+    })
+  );
 
   const { data: lines, error: linesError } = await supabase
     .from("order_lines")
