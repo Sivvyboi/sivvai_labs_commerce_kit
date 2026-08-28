@@ -109,6 +109,42 @@ export async function findOrderByNumberAndEmail(
   return null;
 }
 
+/**
+ * Finds the confirmed order associated with a checkout session.
+ *
+ * The orders table has no direct FK to checkout_sessions.
+ * The link is through payment_attempts.metadata->>'checkoutSessionId',
+ * which is written by payment-service.ts during payment initiation.
+ * Once confirmed, payment_attempts.order_id is set.
+ *
+ * Uses the server Supabase client (RLS-gated, never service-role).
+ */
+export async function findOrderByCheckoutSessionId(
+  checkoutSessionId: string
+): Promise<OrderWithLines | null> {
+  const supabase = await createClient();
+
+  // Fetch recent confirmed payment attempts with metadata to match on session ID.
+  // We filter in JS because metadata is jsonb without an index on the nested field.
+  const { data: attempts, error } = await supabase
+    .from("payment_attempts")
+    .select("order_id, metadata")
+    .eq("status", "confirmed")
+    .not("order_id", "is", null)
+    .order("confirmed_at", { ascending: false });
+
+  if (error || !attempts) return null;
+
+  const matched = attempts.find((pa) => {
+    if (!pa.metadata || typeof pa.metadata !== "object") return false;
+    const meta = pa.metadata as Record<string, unknown>;
+    return meta.checkoutSessionId === checkoutSessionId;
+  });
+
+  if (!matched?.order_id) return null;
+  return findOrderById(matched.order_id);
+}
+
 export async function findCustomerOrders(customerId: string): Promise<OrderWithLines[]> {
   const supabase = await createClient();
   const { data, error } = await supabase
