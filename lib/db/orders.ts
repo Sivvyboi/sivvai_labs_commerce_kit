@@ -230,7 +230,10 @@ export async function findAllOrders(
 
   const { data, error, count } = await query;
   if (error) throw error;
-  return { data: ((data ?? []) as unknown) as OrderWithLines[], count: count ?? 0 };
+  return {
+    data: ((data ?? []) as unknown) as OrderWithLines[],
+    count: count ?? 0,
+  };
 }
 
 export async function insertOrderNote(

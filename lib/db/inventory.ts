@@ -118,6 +118,7 @@ export interface InventoryWithVariant extends InventoryRecordRow {
       name: string;
       status: string;
       deleted_at?: string | null;
+      images?: Array<{ url: string; is_primary: boolean }> | null;
     } | null;
   } | null;
 }
@@ -127,7 +128,7 @@ export async function findAllInventoryWithVariants(): Promise<InventoryWithVaria
   const supabase = createAdminClient();
   const { data, error } = await supabase
     .from("inventory_records")
-    .select("*, variant:product_variants(id, sku, price_override, product:products(id, name, status, deleted_at))")
+    .select("*, variant:product_variants(id, sku, price_override, product:products(id, name, status, deleted_at, images:product_images(url, is_primary)))")
     .order("created_at", { ascending: false });
 
   if (error) throw error;
@@ -145,7 +146,7 @@ export async function findLowStockItems(threshold = 5): Promise<InventoryWithVar
   // fetch candidates and filter in-process (counts are small)
   const { data, error } = await supabase
     .from("inventory_records")
-    .select("*, variant:product_variants(id, sku, price_override, product:products(id, name, status, deleted_at))")
+    .select("*, variant:product_variants(id, sku, price_override, product:products(id, name, status, deleted_at, images:product_images(url, is_primary)))")
     .eq("track_inventory", true);
 
   if (error) throw error;

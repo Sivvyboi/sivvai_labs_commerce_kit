@@ -75,13 +75,28 @@ export function InventoryTable({ items }: InventoryTableProps) {
               const sku = inv.variant?.sku ?? "—";
               const isLow = available <= 5;
               const isOut = available <= 0;
+              const imageUrl =
+                inv.variant?.product?.images?.find((img) => img.is_primary)?.url ??
+                inv.variant?.product?.images?.[0]?.url ??
+                null;
 
               return (
                 <tr key={inv.id} className="hover:bg-[var(--kit-surface)] transition-colors">
                   {/* Name */}
                   <td className="px-4 py-3">
-                    <div className="flex items-center gap-2.5">
-                      <Package size={16} className="text-[var(--kit-text-muted)] flex-shrink-0" />
+                    <div className="flex items-center gap-3">
+                      <div className="h-9 w-9 rounded-lg bg-[var(--kit-card)] border border-[var(--kit-border)] flex items-center justify-center text-[var(--kit-text-muted)] shrink-0 overflow-hidden">
+                        {imageUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={imageUrl}
+                            alt={productName}
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <Package size={16} className="text-[var(--kit-text-muted)]" />
+                        )}
+                      </div>
                       <span className="font-medium text-[var(--kit-text-primary)]">{productName}</span>
                     </div>
                   </td>
