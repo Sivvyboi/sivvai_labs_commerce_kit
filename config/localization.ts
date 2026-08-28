@@ -25,7 +25,7 @@ export const localizationConfig = {
    * ISO 4217 currency code.
    * Used by lib/utils/format.ts to format all monetary values.
    */
-  currency: "USD" as const,
+  currency: "NGN" as const,
 
   /**
    * IANA timezone name.

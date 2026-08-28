@@ -13,6 +13,7 @@ import { getStoreSettings } from "@/services/store-service";
 import { AdminSidebar } from "@/components/admin/layout/AdminSidebar";
 import { AdminShell } from "@/components/admin/layout/AdminShell";
 import { CurrencyProvider } from "@/components/shared/CurrencyProvider";
+import { localizationConfig } from "@/config/localization";
 
 export const metadata: Metadata = {
   title: {
@@ -42,7 +43,7 @@ export default async function AdminLayout({
   const permissions = ctx?.permissions || [];
   const userEmail = ctx?.user.email || "";
   const roleName = ctx?.role?.name || "Admin";
-  const currency = settings?.currency || "USD";
+  const currency = settings?.currency || localizationConfig.currency;
 
   return (
     <CurrencyProvider currency={currency}>

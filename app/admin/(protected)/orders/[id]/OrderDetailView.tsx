@@ -148,9 +148,23 @@ export function OrderDetailView({ order }: OrderDetailViewProps) {
               {order.lines.map((line) => (
                 <div key={line.id} className="flex items-center justify-between p-3 text-sm bg-[var(--kit-surface)]">
                   <div className="flex items-center gap-3">
-                    <Package size={16} className="text-[var(--kit-text-muted)] flex-shrink-0" />
+                    <div className="h-10 w-10 rounded-lg bg-[var(--kit-card)] border border-[var(--kit-border)] flex items-center justify-center text-[var(--kit-text-muted)] shrink-0 overflow-hidden">
+                      {line.image_url_snapshot ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={line.image_url_snapshot}
+                          alt={line.product_name_snapshot}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <Package size={18} className="text-[var(--kit-text-muted)]" />
+                      )}
+                    </div>
                     <div>
                       <p className="font-medium text-[var(--kit-text-primary)]">{line.product_name_snapshot}</p>
+                      {line.variant_label_snapshot && line.variant_label_snapshot !== "Default" && (
+                        <p className="text-xs text-[var(--kit-text-muted)]">Variant: {line.variant_label_snapshot}</p>
+                      )}
                       <p className="text-xs text-[var(--kit-text-muted)]">SKU: {line.sku_snapshot ?? "—"}</p>
                     </div>
                   </div>

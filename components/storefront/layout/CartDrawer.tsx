@@ -24,8 +24,10 @@ import { EmptyState } from "@/components/shared/EmptyState";
 import { ROUTES } from "@/constants/routes";
 import { X, ShoppingBag, Trash2, ArrowRight, Tag, Check, Loader2 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils/format";
+import { useCurrency } from "@/components/shared/CurrencyProvider";
 
 export function CartDrawer() {
+  const currency = useCurrency();
   const {
     cart,
     cartCount,
@@ -81,7 +83,7 @@ export function CartDrawer() {
     setIsApplyingCoupon(false);
 
     if (res.success) {
-      setCouponSuccess(`Promo code "${couponInput.toUpperCase()}" applied! Saved ${formatCurrency(res.discountAmount)}`);
+      setCouponSuccess(`Promo code "${couponInput.toUpperCase()}" applied! Saved ${formatCurrency(res.discountAmount, currency)}`);
     } else {
       setCouponError(res.error ?? "Invalid promo code");
     }
@@ -274,21 +276,19 @@ export function CartDrawer() {
             <div className="space-y-1.5 border-t border-[var(--kit-border)] pt-3 text-xs">
               <div className="flex items-center justify-between text-[var(--kit-text-secondary)]">
                 <span>Subtotal</span>
-                <span>{formatCurrency(subtotal)}</span>
+                <Price amount={subtotal} size="sm" />
               </div>
 
               {discountAmount > 0 && (
                 <div className="flex items-center justify-between text-[var(--kit-success)] font-medium">
                   <span>Discount ({appliedCoupon})</span>
-                  <span>-{formatCurrency(discountAmount)}</span>
+                  <span>-<Price amount={discountAmount} size="sm" /></span>
                 </div>
               )}
 
               <div className="flex items-center justify-between font-bold text-sm text-[var(--kit-text-primary)] pt-1 border-t border-[var(--kit-border)]/50">
                 <span>Estimated Total</span>
-                <span className="text-[var(--kit-accent)]">
-                  {formatCurrency(grandTotal)}
-                </span>
+                <Price amount={grandTotal} size="md" className="text-[var(--kit-accent)]" />
               </div>
             </div>
 

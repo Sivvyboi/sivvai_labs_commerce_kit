@@ -15,13 +15,15 @@ import { CartProvider } from "@/components/providers/CartProvider";
 import { CurrencyProvider } from "@/components/shared/CurrencyProvider";
 import { getStoreSettings } from "@/services/store-service";
 
+import { localizationConfig } from "@/config/localization";
+
 export default async function StorefrontLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   const settings = await getStoreSettings().catch(() => null);
-  const currency = settings?.currency || "USD";
+  const currency = settings?.currency || localizationConfig.currency;
 
   return (
     <CurrencyProvider currency={currency}>
