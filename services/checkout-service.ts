@@ -98,7 +98,9 @@ export async function initiateCheckout(input: InitiateCheckoutInput) {
 
   const grandTotal = Math.max(0, cart.subtotal + shippingTotal - discountTotal);
 
-  // 6. Create checkout_session with locked totals & verified snapshot
+  // checkout_sessions.*_total columns are INTEGER (Naira).
+  // Floating-point arithmetic in enrichCart() can produce decimals (e.g. 72999.99).
+  // Round all totals to the nearest whole number before inserting.
   const session = await checkoutRepo.createCheckoutSession({
     customer_id: customer.id,
     cart_id: cart.id,
@@ -108,11 +110,11 @@ export async function initiateCheckout(input: InitiateCheckoutInput) {
     shipping_address: shippingAddressSnapshot as Json,
     fulfilment_method_id: input.shippingMethodId ?? null,
     promo_code: input.promoCode ?? null,
-    subtotal: cart.subtotal,
-    shipping_total: shippingTotal,
-    discount_total: discountTotal,
+    subtotal: Math.round(cart.subtotal),
+    shipping_total: Math.round(shippingTotal),
+    discount_total: Math.round(discountTotal),
     tax_total: 0,
-    grand_total: grandTotal,
+    grand_total: Math.round(grandTotal),
     currency: "NGN",
     status: "open",
     expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
