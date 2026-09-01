@@ -28,7 +28,9 @@ export async function validateAndApplyPromoCode(code: string, subtotal: number) 
 
   let discountAmount = 0;
   if (promo.type === "fixed_amount") {
-    discountAmount = Number(promo.value);
+    // promo.value is stored in minor units (Kobo); subtotal is in major units (Naira).
+    // Divide by 100 to align units before clamping to subtotal.
+    discountAmount = Number(promo.value) / 100;
   } else if (promo.type === "percentage") {
     discountAmount = (subtotal * Number(promo.value)) / 100;
   }

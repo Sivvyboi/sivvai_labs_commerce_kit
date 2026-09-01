@@ -13,7 +13,7 @@
  * refreshes and step navigation preserve user input seamlessly.
  */
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useCart } from "./useCart";
 import {
@@ -26,6 +26,7 @@ import type { InitiateCheckoutInput } from "@/lib/validation";
 import type { ResolvedShippingOption } from "@/services/shipping-service";
 
 import type { CustomerWithAddresses } from "@/lib/db/customers";
+import { useCartStore } from "@/features/storefront/store/cart.store";
 
 export type CheckoutStep = 1 | 2 | 3 | 4;
 
@@ -213,6 +214,44 @@ export function useCheckout(options?: { customer?: CustomerWithAddresses | null 
   const grandTotal = useMemo(() => {
     return Math.max(0, subtotal + shippingTotal - discountTotal);
   }, [subtotal, shippingTotal, discountTotal]);
+
+  // ---------------------------------------------------------------------------
+  // One-shot cart-coupon → checkout-coupon sync via Zustand subscription
+  //
+  // Problem: useCartStore (cart.store.ts) has no `persist` middleware, so it
+  // starts with appliedCoupon = null on every page load and rehydrates from the
+  // server action on the first `useCart` call. The useState lazy initializer
+  // above runs synchronously before that rehydration completes.
+  //
+  // We use a Zustand store subscription so that setState is called inside a
+  // callback (not directly in the effect body), which satisfies the
+  // react-hooks/set-state-in-effect rule.
+  //
+  // The "hasSynced" ref ensures we only copy the cart coupon once — preventing
+  // this from overwriting a coupon the user manually enters on this page later.
+  // ---------------------------------------------------------------------------
+  const hasSyncedCartCoupon = React.useRef(false);
+  useEffect(() => {
+    // Eagerly sync if the store already has a coupon when the effect first mounts.
+    const snap = useCartStore.getState();
+    if (!hasSyncedCartCoupon.current && snap.appliedCoupon && !promoCode) {
+      hasSyncedCartCoupon.current = true;
+      setPromoCode(snap.appliedCoupon);
+      setDiscountTotal(snap.discountAmount ?? 0);
+    }
+
+    // Subscribe for the async rehydration case (cart store loads after mount).
+    const unsub = useCartStore.subscribe((state) => {
+      if (!hasSyncedCartCoupon.current && state.appliedCoupon && !promoCode) {
+        hasSyncedCartCoupon.current = true;
+        setPromoCode(state.appliedCoupon);
+        setDiscountTotal(state.discountAmount ?? 0);
+      }
+    });
+
+    return unsub;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // run once on mount; promoCode intentionally excluded (stale-ref pattern)
 
   // ---------------------------------------------------------------------------
   // Authoritative Shipping Option Fetcher
