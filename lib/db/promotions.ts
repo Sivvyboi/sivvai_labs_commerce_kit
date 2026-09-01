@@ -1,5 +1,4 @@
 import "server-only";
-import { createPublicClient } from "../supabase/server";
 import { createAdminClient } from "../supabase/admin";
 import type { Database } from "@/types";
 
@@ -16,7 +15,7 @@ export type CouponCodeWithPromotion = CouponCodeRow & {
 };
 
 export async function findCouponByCode(code: string): Promise<CouponCodeWithPromotion | null> {
-  const supabase = createPublicClient();
+  const supabase = createAdminClient();
   const { data, error } = await supabase
     .from("coupon_codes")
     .select("*, promotion:promotions(*)")

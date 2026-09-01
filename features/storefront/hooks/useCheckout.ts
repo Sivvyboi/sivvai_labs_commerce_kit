@@ -280,11 +280,15 @@ export function useCheckout(options?: { customer?: CustomerWithAddresses | null 
             setDiscountTotal(res.discountAmount);
           } else {
             setDiscountTotal(0);
+            setPromoCode("");
+            useCartStore.getState().setCoupon(null, 0);
           }
         }
       } catch {
         if (!ignore) {
           setDiscountTotal(0);
+          setPromoCode("");
+          useCartStore.getState().setCoupon(null, 0);
         }
       }
     };

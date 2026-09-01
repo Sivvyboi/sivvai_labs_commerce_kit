@@ -60,6 +60,13 @@ export function useCart() {
     [setCoupon]
   );
 
+  // Automatically validate active coupon on initial load / subtotal update
+  React.useEffect(() => {
+    if (appliedCoupon && subtotal > 0) {
+      void syncDiscountForCart(appliedCoupon);
+    }
+  }, [appliedCoupon, subtotal, syncDiscountForCart]);
+
   /**
    * Adds an item to the cart, updates state, and opens the cart drawer automatically.
    */
