@@ -79,6 +79,30 @@ export async function cancelReservation(reservationId: string) {
   return inventoryRepo.releaseReservation(reservationId);
 }
 
+export async function getActiveReservations(inventoryRecordId: string): Promise<InventoryReservationRow[]> {
+  return inventoryRepo.findReservationsByInventoryRecordId(inventoryRecordId, { status: "active" });
+}
+
+export async function releaseInventoryReservation(params: {
+  reservationId: string;
+  expectedInventoryRecordId?: string;
+}): Promise<InventoryReservationRow> {
+  const reservation = await inventoryRepo.findReservationById(params.reservationId);
+  if (!reservation) {
+    throw new NotFoundError("InventoryReservation", params.reservationId);
+  }
+
+  if (params.expectedInventoryRecordId && reservation.inventory_record_id !== params.expectedInventoryRecordId) {
+    throw new ValidationError("Reservation does not belong to the specified inventory record");
+  }
+
+  if (reservation.status !== "active") {
+    throw new ConflictError(`Reservation is already ${reservation.status} and cannot be released.`);
+  }
+
+  return inventoryRepo.releaseReservation(params.reservationId);
+}
+
 // ---------------------------------------------------------------------------
 // Admin service functions
 // ---------------------------------------------------------------------------

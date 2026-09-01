@@ -123,6 +123,13 @@ export const UpdateInventoryAdminSchema = z.object({
 
 export type UpdateInventoryAdminInput = z.infer<typeof UpdateInventoryAdminSchema>;
 
+export const ReleaseInventoryReservationSchema = z.object({
+  reservation_id: z.string().uuid("Invalid reservation ID"),
+  inventory_record_id: z.string().uuid("Invalid inventory record ID").optional(),
+});
+
+export type ReleaseInventoryReservationInput = z.infer<typeof ReleaseInventoryReservationSchema>;
+
 // ---------------------------------------------------------------------------
 // Orders
 // ---------------------------------------------------------------------------

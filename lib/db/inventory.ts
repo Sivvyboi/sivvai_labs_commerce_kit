@@ -46,12 +46,21 @@ export async function createReservation(params: {
 
 export async function updateReservationStatus(
   reservationId: string,
-  status: Database["public"]["Enums"]["reservation_status"]
+  status: Database["public"]["Enums"]["reservation_status"],
+  releasedAt?: string
 ): Promise<InventoryReservationRow> {
   const supabase = createAdminClient();
+  const updateData: {
+    status: Database["public"]["Enums"]["reservation_status"];
+    released_at?: string;
+  } = { status };
+  if (status === "released") {
+    updateData.released_at = releasedAt ?? new Date().toISOString();
+  }
+
   const { data, error } = await supabase
     .from("inventory_reservations")
-    .update({ status })
+    .update(updateData)
     .eq("id", reservationId)
     .select()
     .single();
@@ -62,6 +71,38 @@ export async function updateReservationStatus(
 
 export async function releaseReservation(reservationId: string): Promise<InventoryReservationRow> {
   return updateReservationStatus(reservationId, "released");
+}
+
+export async function findReservationById(reservationId: string): Promise<InventoryReservationRow | null> {
+  const supabase = createAdminClient();
+  const { data, error } = await supabase
+    .from("inventory_reservations")
+    .select("*")
+    .eq("id", reservationId)
+    .maybeSingle();
+
+  if (error || !data) return null;
+  return data;
+}
+
+export async function findReservationsByInventoryRecordId(
+  inventoryRecordId: string,
+  options?: { status?: Database["public"]["Enums"]["reservation_status"] }
+): Promise<InventoryReservationRow[]> {
+  const supabase = createAdminClient();
+  let query = supabase
+    .from("inventory_reservations")
+    .select("*")
+    .eq("inventory_record_id", inventoryRecordId)
+    .order("created_at", { ascending: false });
+
+  if (options?.status) {
+    query = query.eq("status", options.status);
+  }
+
+  const { data, error } = await query;
+  if (error) throw error;
+  return data ?? [];
 }
 
 export async function logStockMovement(params: {
