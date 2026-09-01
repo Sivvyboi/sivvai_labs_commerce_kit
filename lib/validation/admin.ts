@@ -165,21 +165,52 @@ export type AddOrderNoteAdminInput = z.infer<typeof AddOrderNoteAdminSchema>;
 // Promotions
 // ---------------------------------------------------------------------------
 
-export const CreatePromotionAdminSchema = z.object({
-  name: z.string().min(1, "Promotion name is required"),
+export const BasePromotionAdminSchema = z.object({
+  name: z.string().trim().min(1, "Promotion name is required"),
   type: z.enum(["percentage", "fixed_amount"]),
   value: z.coerce.number().positive("Discount value must be positive"),
   // Coupon code
-  code: z.string().min(3, "Code must be at least 3 characters").toUpperCase(),
-  max_uses: z.coerce.number().int().positive().optional().nullable(),
-  starts_at: z.string().datetime({ offset: true }).optional().nullable(),
-  ends_at: z.string().datetime({ offset: true }).optional().nullable(),
+  code: z
+    .string()
+    .trim()
+    .min(3, "Code must be at least 3 characters")
+    .toUpperCase(),
+  max_uses: z.preprocess(
+    (val) => (val === "" || val === null || val === undefined ? null : val),
+    z.coerce
+      .number()
+      .int("Max usage limit must be a whole number")
+      .positive("Max usage limit must be at least 1")
+      .nullable()
+      .optional()
+  ),
+  starts_at: z.preprocess(
+    (val) => (val === "" || val === null || val === undefined ? null : val),
+    z.string().nullable().optional()
+  ),
+  ends_at: z.preprocess(
+    (val) => (val === "" || val === null || val === undefined ? null : val),
+    z.string().nullable().optional()
+  ),
   is_active: z.boolean().default(true),
 });
 
+export const CreatePromotionAdminSchema = BasePromotionAdminSchema.refine(
+  (data) => {
+    if (data.type === "percentage") {
+      return data.value > 0 && data.value <= 100;
+    }
+    return data.value > 0;
+  },
+  {
+    message: "Percentage discount must be between 1% and 100%",
+    path: ["value"],
+  }
+);
+
 export type CreatePromotionAdminInput = z.infer<typeof CreatePromotionAdminSchema>;
 
-export const UpdatePromotionAdminSchema = CreatePromotionAdminSchema.partial().extend({
+export const UpdatePromotionAdminSchema = BasePromotionAdminSchema.partial().extend({
   id: z.string().uuid(),
 });
 

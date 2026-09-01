@@ -1,5 +1,5 @@
 import "server-only";
-import { createClient, createPublicClient } from "../supabase/server";
+import { createPublicClient } from "../supabase/server";
 import { createAdminClient } from "../supabase/admin";
 import type { Database } from "@/types";
 
@@ -73,32 +73,33 @@ export async function createPromotionWithCoupon(
   maxUses?: number | null
 ): Promise<PromotionWithCoupon> {
   const supabase = createAdminClient();
+  const cleanCode = code.trim().toUpperCase();
 
-  const { data: promo, error: promoError } = await supabase
-    .from("promotions")
-    .insert(promoData)
-    .select()
-    .single();
+  const { data, error } = await supabase.rpc("create_promotion_with_coupon_rpc" as never, {
+    p_name: promoData.name,
+    p_type: promoData.type,
+    p_value: Number(promoData.value),
+    p_code: cleanCode,
+    p_max_uses: maxUses ?? null,
+    p_starts_at: promoData.starts_at ?? null,
+    p_ends_at: promoData.ends_at ?? null,
+    p_is_active: promoData.is_active ?? true,
+  } as never);
 
-  if (promoError || !promo) throw promoError || new Error("Failed to create promotion");
+  if (error) {
+    const errorMsg = (error as { message?: string }).message ?? "";
+    const errorCode = (error as { code?: string }).code ?? "";
+    if (errorCode === "23505" || errorMsg.includes("coupon_codes_code_key") || errorMsg.toLowerCase().includes("unique")) {
+      throw new Error(`Coupon code "${cleanCode}" already exists.`);
+    }
+    throw new Error(errorMsg || "Failed to create promotion and coupon code");
+  }
 
-  const { data: coupon, error: couponError } = await supabase
-    .from("coupon_codes")
-    .insert({
-      promotion_id: promo.id,
-      code: code.toUpperCase(),
-      max_uses: maxUses ?? null,
-      current_uses: 0,
-    })
-    .select()
-    .single();
+  if (!data) {
+    throw new Error("Failed to create promotion and coupon code");
+  }
 
-  if (couponError || !coupon) throw couponError || new Error("Failed to create coupon code");
-
-  return {
-    ...promo,
-    coupon_codes: [coupon],
-  };
+  return (data as unknown) as PromotionWithCoupon;
 }
 
 export async function updatePromotion(id: string, data: PromotionUpdate): Promise<PromotionRow> {

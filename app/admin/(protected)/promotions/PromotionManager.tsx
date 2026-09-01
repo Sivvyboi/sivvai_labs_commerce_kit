@@ -21,7 +21,7 @@ interface PromotionManagerProps {
 }
 
 export function PromotionManager({ promotions }: PromotionManagerProps) {
-  const { execute, loading, error } = useAdmin();
+  const { execute, loading, error, clearError } = useAdmin();
 
   const [modalOpen, setModalOpen] = React.useState(false);
   const [name, setName] = React.useState("");
@@ -32,6 +32,7 @@ export function PromotionManager({ promotions }: PromotionManagerProps) {
   const [endsAt, setEndsAt] = React.useState("");
 
   function openCreateModal() {
+    clearError();
     setName("");
     setType("percentage");
     setValue("");
@@ -55,13 +56,18 @@ export function PromotionManager({ promotions }: PromotionManagerProps) {
         value: numericValue,
         code,
         max_uses: maxUses ? Number(maxUses) : null,
-        ends_at: endsAt ? new Date(endsAt).toISOString() : null,
+        ends_at: endsAt || null,
         is_active: true,
       })
     );
 
     if (res?.success) {
       setModalOpen(false);
+      setName("");
+      setValue("");
+      setCode("");
+      setMaxUses("");
+      setEndsAt("");
     }
   }
 
@@ -78,7 +84,7 @@ export function PromotionManager({ promotions }: PromotionManagerProps) {
         </button>
       </div>
 
-      {error && (
+      {error && !modalOpen && (
         <div className="rounded-[var(--kit-radius-md)] border border-[var(--kit-danger)]/20 bg-[var(--kit-danger)]/10 p-3 text-xs text-[var(--kit-danger)]">
           {error}
         </div>
@@ -109,6 +115,12 @@ export function PromotionManager({ promotions }: PromotionManagerProps) {
           </h2>
 
           <form onSubmit={handleSubmit} className="mt-4 space-y-4">
+            {error && (
+              <div className="rounded-[var(--kit-radius-md)] border border-[var(--kit-danger)]/20 bg-[var(--kit-danger)]/10 p-3 text-xs text-[var(--kit-danger)]">
+                {error}
+              </div>
+            )}
+
             <div>
               <label htmlFor="promo-name-input" className="block text-xs font-medium text-[var(--kit-text-secondary)]">
                 Promotion Name <span className="text-[var(--kit-danger)]">*</span>
@@ -174,6 +186,7 @@ export function PromotionManager({ promotions }: PromotionManagerProps) {
                   type="number"
                   step={type === "percentage" ? "1" : "0.01"}
                   min="0.01"
+                  max={type === "percentage" ? "100" : undefined}
                   value={value}
                   onChange={(e) => setValue(e.target.value)}
                   placeholder={type === "percentage" ? "15" : "1000"}
