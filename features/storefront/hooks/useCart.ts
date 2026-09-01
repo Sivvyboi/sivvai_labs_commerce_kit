@@ -41,6 +41,26 @@ export function useCart() {
   const grandTotal = Math.max(0, subtotal - discountAmount);
 
   /**
+   * Re-evaluates active coupon discount when cart subtotal changes from item mutations.
+   */
+  const syncDiscountForCart = React.useCallback(
+    async (currentCoupon: string | null) => {
+      if (!currentCoupon) return;
+      try {
+        const res = await applyCouponAction(currentCoupon);
+        if (res.success) {
+          setCoupon(currentCoupon, res.discountAmount);
+        } else {
+          setCoupon(null, 0);
+        }
+      } catch {
+        setCoupon(null, 0);
+      }
+    },
+    [setCoupon]
+  );
+
+  /**
    * Adds an item to the cart, updates state, and opens the cart drawer automatically.
    */
   const addItem = React.useCallback(
@@ -57,6 +77,9 @@ export function useCart() {
 
         if (res.cart) {
           setCart(res.cart);
+          if (appliedCoupon) {
+            void syncDiscountForCart(appliedCoupon);
+          }
         }
         openDrawer();
         return res;
@@ -64,7 +87,7 @@ export function useCart() {
         setLoading(false);
       }
     },
-    [setCart, setLoading, openDrawer]
+    [setCart, setLoading, openDrawer, appliedCoupon, syncDiscountForCart]
   );
 
   /**
@@ -77,13 +100,16 @@ export function useCart() {
         const res = await updateQuantityAction({ cartLineId, quantity });
         if (res.cart) {
           setCart(res.cart);
+          if (appliedCoupon) {
+            void syncDiscountForCart(appliedCoupon);
+          }
         }
         return res;
       } finally {
         setLoading(false);
       }
     },
-    [setCart, setLoading]
+    [setCart, setLoading, appliedCoupon, syncDiscountForCart]
   );
 
   /**
@@ -96,13 +122,18 @@ export function useCart() {
         const res = await removeFromCartAction(cartLineId);
         if (res.cart) {
           setCart(res.cart);
+          if (!res.cart.items || res.cart.items.length === 0) {
+            setCoupon(null, 0);
+          } else if (appliedCoupon) {
+            void syncDiscountForCart(appliedCoupon);
+          }
         }
         return res;
       } finally {
         setLoading(false);
       }
     },
-    [setCart, setLoading]
+    [setCart, setLoading, appliedCoupon, syncDiscountForCart, setCoupon]
   );
 
   /**

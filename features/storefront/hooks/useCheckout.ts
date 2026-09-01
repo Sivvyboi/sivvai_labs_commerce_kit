@@ -153,12 +153,14 @@ export function useCheckout(options?: { customer?: CustomerWithAddresses | null 
     return typeof d?.shippingTotal === "number" ? d.shippingTotal : 0;
   });
   const [promoCode, setPromoCode] = useState<string>(() => {
-    const d = readDraft();
-    return typeof d?.promoCode === "string" ? d.promoCode : (cartCoupon ?? "");
+    // Do NOT read promoCode from localStorage draft — it may be stale from a prior
+    // checkout session and would shadow the coupon the user just applied in the Cart.
+    // Read from the live Zustand cart store instead (synchronous for client-side nav).
+    return cartCoupon ?? "";
   });
   const [discountTotal, setDiscountTotal] = useState<number>(() => {
-    const d = readDraft();
-    return typeof d?.discountTotal === "number" ? d.discountTotal : (cartDiscount ?? 0);
+    // Likewise: derive from live cart state, not a stale persisted amount.
+    return cartDiscount ?? 0;
   });
   const [paymentProvider, setPaymentProvider] = useState<string>(() => {
     const d = readDraft();
@@ -177,6 +179,9 @@ export function useCheckout(options?: { customer?: CustomerWithAddresses | null 
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
+      // promoCode and discountTotal are intentionally excluded from the draft.
+      // Persisting them causes stale coupon state to shadow the live cart coupon
+      // on the next checkout visit. They are derived fresh from Zustand at mount.
       const draft = {
         step,
         addressMode,
@@ -186,8 +191,6 @@ export function useCheckout(options?: { customer?: CustomerWithAddresses | null 
         address,
         shippingMethodId,
         shippingTotal,
-        promoCode,
-        discountTotal,
         paymentProvider,
         checkoutSessionId,
       };
@@ -204,8 +207,6 @@ export function useCheckout(options?: { customer?: CustomerWithAddresses | null 
     address,
     shippingMethodId,
     shippingTotal,
-    promoCode,
-    discountTotal,
     paymentProvider,
     checkoutSessionId,
   ]);
@@ -233,8 +234,12 @@ export function useCheckout(options?: { customer?: CustomerWithAddresses | null 
   const hasSyncedCartCoupon = React.useRef(false);
   useEffect(() => {
     // Eagerly sync if the store already has a coupon when the effect first mounts.
+    // The !promoCode guard is intentionally removed: promoCode now starts from the
+    // live cartCoupon value (not from localStorage draft), so overwriting it with
+    // the same Zustand value is harmless, and prevents the old guard from blocking
+    // a freshly-applied coupon. hasSyncedCartCoupon still fires only once.
     const snap = useCartStore.getState();
-    if (!hasSyncedCartCoupon.current && snap.appliedCoupon && !promoCode) {
+    if (!hasSyncedCartCoupon.current && snap.appliedCoupon) {
       hasSyncedCartCoupon.current = true;
       setPromoCode(snap.appliedCoupon);
       setDiscountTotal(snap.discountAmount ?? 0);
@@ -242,7 +247,7 @@ export function useCheckout(options?: { customer?: CustomerWithAddresses | null 
 
     // Subscribe for the async rehydration case (cart store loads after mount).
     const unsub = useCartStore.subscribe((state) => {
-      if (!hasSyncedCartCoupon.current && state.appliedCoupon && !promoCode) {
+      if (!hasSyncedCartCoupon.current && state.appliedCoupon) {
         hasSyncedCartCoupon.current = true;
         setPromoCode(state.appliedCoupon);
         setDiscountTotal(state.discountAmount ?? 0);
@@ -250,8 +255,46 @@ export function useCheckout(options?: { customer?: CustomerWithAddresses | null 
     });
 
     return unsub;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // run once on mount; promoCode intentionally excluded (stale-ref pattern)
+  }, []); // run once on mount; store refs read via getState() / subscribe(), no reactive deps needed
+
+  // ---------------------------------------------------------------------------
+  // Dynamic Promo Recalculation on Subtotal / Promo Code Change
+  // Ensures % discounts (and fixed discounts) dynamically re-evaluate against
+  // the exact current cart subtotal if the user changed items or subtotal before checkout.
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    let ignore = false;
+    if (!promoCode) {
+      return;
+    }
+
+    const recalculate = async () => {
+      try {
+        if (subtotal <= 0) {
+          if (!ignore) setDiscountTotal(0);
+          return;
+        }
+        const res = await applyPromoAction(promoCode, subtotal);
+        if (!ignore) {
+          if (res.success) {
+            setDiscountTotal(res.discountAmount);
+          } else {
+            setDiscountTotal(0);
+          }
+        }
+      } catch {
+        if (!ignore) {
+          setDiscountTotal(0);
+        }
+      }
+    };
+
+    void recalculate();
+
+    return () => {
+      ignore = true;
+    };
+  }, [promoCode, subtotal]);
 
   // ---------------------------------------------------------------------------
   // Authoritative Shipping Option Fetcher
