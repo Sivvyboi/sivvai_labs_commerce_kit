@@ -8,6 +8,7 @@
 import type { ProductWithDetails } from "@/lib/db/products";
 import { siteConfig } from "@/config/site";
 import { localizationConfig } from "@/config/localization";
+import { getProductStockSummary } from "@/features/storefront/utils/formatStockStatus";
 
 export function buildProductSchema(product: ProductWithDetails, currentUrl?: string) {
   const images = product.images?.map((img) => img.url).filter(Boolean) ?? [];
@@ -17,10 +18,8 @@ export function buildProductSchema(product: ProductWithDetails, currentUrl?: str
   // Convert price from minor units (kobo/cents) if applicable or format properly (e.g. 500000 -> 5000)
   const priceAmount = (price / 100).toFixed(2);
   
-  const isAvailable =
-    product.status === "published" &&
-    (product.variants?.length === 0 ||
-      product.variants?.some((v) => v.status === "active"));
+  const stockSummary = getProductStockSummary(product, primaryVariant?.id);
+  const isAvailable = stockSummary.isAvailable;
 
   return {
     "@context": "https://schema.org",

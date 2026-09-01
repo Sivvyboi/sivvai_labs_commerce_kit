@@ -17,6 +17,7 @@ import { QuantitySelector } from "@/components/storefront/product/QuantitySelect
 import { DeliveryEstimate } from "@/components/storefront/product/DeliveryEstimate";
 import { Price } from "@/components/shared/Price";
 import { StockBadge } from "@/components/shared/StockBadge";
+import { getProductStockSummary } from "@/features/storefront/utils/formatStockStatus";
 import { useCart } from "@/features/storefront/hooks/useCart";
 import { featureFlag } from "@/config/feature-flags";
 import { buildWhatsAppUrl } from "@/features/storefront/utils/buildWhatsAppUrl";
@@ -63,11 +64,13 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
   const activePrice = selectedVariant?.price_override ?? product.base_price;
   const comparePrice = product.compare_at_price;
 
-  const isAvailable =
-    product.status === "published" &&
-    (!product.variants || product.variants.length === 0 || selectedVariant?.status === "active");
+  const stockSummary = useMemo(
+    () => getProductStockSummary(product, selectedVariant?.id),
+    [product, selectedVariant?.id]
+  );
 
-  const stockQuantity = isAvailable ? undefined : 0;
+  const isAvailable = stockSummary.isAvailable;
+  const stockQuantity = stockSummary.stockQuantity;
 
   // Handle Add to Cart
   const handleAddToCart = async () => {
@@ -139,7 +142,7 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
                 {product.category.name}
               </span>
             )}
-            <StockBadge quantity={stockQuantity} variant="default" />
+            <StockBadge quantity={stockQuantity} threshold={stockSummary.lowStockThreshold} variant="default" />
           </div>
 
           <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-[var(--kit-text-primary)] leading-tight">

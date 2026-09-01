@@ -18,6 +18,7 @@ import Image from "next/image";
 import type { ProductWithDetails } from "@/lib/db/products";
 import { Price } from "@/components/shared/Price";
 import { StockBadge } from "@/components/shared/StockBadge";
+import { getProductStockSummary } from "@/features/storefront/utils/formatStockStatus";
 import { useCart } from "@/features/storefront/hooks/useCart";
 import { ROUTES } from "@/constants/routes";
 import { ShoppingBag, Plus, Loader2 } from "lucide-react";
@@ -44,12 +45,13 @@ export function ProductCard({
   const imageUrl = primaryImage?.url ?? null;
   const imageAlt = primaryImage?.alt_text ?? product.name;
 
-  // Determine stock availability from product & variant status
-  const isAvailable =
-    product.status === "published" &&
-    (product.variants?.length === 0 ||
-      product.variants?.some((v) => v.status === "active"));
-  const stockQuantity = isAvailable ? undefined : 0;
+  // Determine stock availability from product & variant inventory
+  const stockSummary = React.useMemo(
+    () => getProductStockSummary(product),
+    [product]
+  );
+  const isAvailable = stockSummary.isAvailable;
+  const stockQuantity = stockSummary.stockQuantity;
 
   const firstVariantId = product.variants?.[0]?.id;
   const productUrl = ROUTES.product(product.slug);

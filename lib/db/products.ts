@@ -6,7 +6,18 @@ import type { CategoryRow } from "./categories";
 export type ProductRow = Database["public"]["Tables"]["products"]["Row"];
 export type ProductInsert = Database["public"]["Tables"]["products"]["Insert"];
 export type ProductUpdate = Database["public"]["Tables"]["products"]["Update"];
-export type ProductVariantRow = Database["public"]["Tables"]["product_variants"]["Row"];
+export type VariantInventoryRow = {
+  id: string;
+  on_hand_quantity: number;
+  reserved_quantity: number;
+  low_stock_threshold: number;
+  track_inventory: boolean;
+  allow_backorders: boolean;
+};
+
+export type ProductVariantRow = Database["public"]["Tables"]["product_variants"]["Row"] & {
+  inventory?: VariantInventoryRow | VariantInventoryRow[] | null;
+};
 export type ProductImageRow = Database["public"]["Tables"]["product_images"]["Row"];
 
 export type ProductGroupRow = Database["public"]["Tables"]["option_groups"]["Row"];
@@ -53,7 +64,8 @@ const PRODUCT_COLUMNS = `
   category:categories(id, name, slug, description, archived_at),
   variants:product_variants(
     id, product_id, image_id, sku, option_combination, price_override, is_default, status,
-    archived_at, created_at, updated_at
+    archived_at, created_at, updated_at,
+    inventory:inventory_records(id, on_hand_quantity, reserved_quantity, low_stock_threshold, track_inventory, allow_backorders)
   ),
   images:product_images(
     id, product_id, url, alt_text, display_order, is_primary, created_at
