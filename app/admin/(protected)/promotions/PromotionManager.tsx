@@ -185,7 +185,7 @@ export function PromotionManager({ promotions }: PromotionManagerProps) {
                   id="promo-value-input"
                   type="number"
                   step={type === "percentage" ? "1" : "0.01"}
-                  min="0.01"
+                  min={type === "percentage" ? "1" : "0.01"}
                   max={type === "percentage" ? "100" : undefined}
                   value={value}
                   onChange={(e) => setValue(e.target.value)}
