@@ -3,6 +3,7 @@ import * as checkoutRepo from "@/lib/db/checkout";
 import * as customerRepo from "@/lib/db/customers";
 import * as storeRepo from "@/lib/db/store";
 import * as orderService from "./order-service";
+import * as cartService from "./cart-service";
 import { getPaymentProvider } from "@/lib/payments";
 import { nairaToKobo } from "@/lib/utils/money";
 import {
@@ -18,6 +19,20 @@ export interface InitiatePaymentParams {
   providerName?: string;
   callbackUrl?: string;
 }
+
+/**
+ * Builds a compact, human-readable item summary string for Paystack metadata.
+ * Example: "Ankara Agbada Set × 1; Black Shoe × 2"
+ * Uses server-side cart data only — never trusts client-supplied names.
+ */
+function buildItemSummary(
+  items: Array<{ name: string; quantity: number }>
+): string {
+  return items
+    .map((item) => `${item.name} × ${item.quantity}`)
+    .join("; ");
+}
+
 
 /**
  * Initiates payment with Paystack or selected provider.
@@ -117,6 +132,24 @@ export async function initiatePayment(params: InitiatePaymentParams) {
   });
 
   // 8. STEP 2 OF LIFECYCLE: Initialize external transaction with Provider (server-side only)
+  //    Fetch cart server-side to build a compact item summary for Paystack metadata.
+  //    This is informational only and does NOT affect payment amount or fulfillment.
+  let itemSummary = "";
+  let itemCount = 0;
+  try {
+    const cart = await cartService.getCart(session.cart_id);
+    const lineItems = (cart.items ?? []).flatMap((line) => {
+      const productName = line.variant?.product?.name;
+      if (!productName) return [];
+      return [{ name: productName, quantity: line.quantity }];
+    });
+    itemCount = lineItems.reduce((acc, l) => acc + l.quantity, 0);
+    itemSummary = buildItemSummary(lineItems);
+  } catch {
+    // Non-fatal: metadata item summary is supplementary only.
+    // Payment initialization continues even if cart fetch fails.
+  }
+
   let initResult;
   try {
     initResult = await provider.initializePayment({
@@ -126,8 +159,17 @@ export async function initiatePayment(params: InitiatePaymentParams) {
       reference,
       callbackUrl: params.callbackUrl,
       metadata: {
+        // Existing keys — preserved for verifyAndFulfillPayment linkage
         checkoutSessionId: session.id,
         paymentAttemptId: attempt.id,
+        // Reconciliation metadata for Paystack dashboard
+        checkout_session_id: session.id,
+        order_id: null,
+        order_number: null,
+        customer_email: customerEmail,
+        currency: session.currency || "NGN",
+        item_summary: itemSummary || null,
+        item_count: itemCount,
       },
     });
   } catch (initErr) {
