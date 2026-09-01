@@ -150,6 +150,40 @@ export async function initiatePayment(params: InitiatePaymentParams) {
     // Payment initialization continues even if cart fetch fails.
   }
 
+  // Build Paystack-supported custom_fields array for Dashboard & Receipt visibility.
+  // Only non-null, non-empty values are added to custom_fields.
+  const customFields: Array<{ display_name: string; variable_name: string; value: string }> = [];
+
+  if (customerEmail) {
+    customFields.push({
+      display_name: "Customer Email",
+      variable_name: "customer_email",
+      value: customerEmail,
+    });
+  }
+
+  if (itemSummary) {
+    customFields.push({
+      display_name: "Items",
+      variable_name: "item_summary",
+      value: itemSummary,
+    });
+  }
+
+  if (itemCount > 0) {
+    customFields.push({
+      display_name: "Item Count",
+      variable_name: "item_count",
+      value: String(itemCount),
+    });
+  }
+
+  customFields.push({
+    display_name: "Currency",
+    variable_name: "currency",
+    value: session.currency || "NGN",
+  });
+
   let initResult;
   try {
     initResult = await provider.initializePayment({
@@ -162,7 +196,7 @@ export async function initiatePayment(params: InitiatePaymentParams) {
         // Existing keys — preserved for verifyAndFulfillPayment linkage
         checkoutSessionId: session.id,
         paymentAttemptId: attempt.id,
-        // Reconciliation metadata for Paystack dashboard
+        // Machine-readable reconciliation metadata
         checkout_session_id: session.id,
         order_id: null,
         order_number: null,
@@ -170,6 +204,8 @@ export async function initiatePayment(params: InitiatePaymentParams) {
         currency: session.currency || "NGN",
         item_summary: itemSummary || null,
         item_count: itemCount,
+        // Dashboard & Receipt visible custom fields for Paystack
+        custom_fields: customFields,
       },
     });
   } catch (initErr) {
