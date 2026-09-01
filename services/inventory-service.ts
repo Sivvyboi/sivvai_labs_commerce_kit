@@ -1,6 +1,11 @@
 import * as inventoryRepo from "@/lib/db/inventory";
 import type { InventoryReservationRow } from "@/lib/db/inventory";
-import { InsufficientStockError } from "@/lib/errors";
+import {
+  InsufficientStockError,
+  NotFoundError,
+  ValidationError,
+  ConflictError,
+} from "@/lib/errors";
 
 export async function checkAvailableStock(variantId: string): Promise<number> {
   const inv = await inventoryRepo.getVariantInventory(variantId);
