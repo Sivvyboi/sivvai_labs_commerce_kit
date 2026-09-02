@@ -9,6 +9,7 @@ import * as React from "react";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 
+import { requirePermissionPage } from "@/lib/auth/admin-guard";
 import { getOrderDetails } from "@/services/order-service";
 import { OrderDetailView } from "./OrderDetailView";
 
@@ -25,6 +26,7 @@ export async function generateMetadata({ params }: AdminOrderDetailPageProps): P
 }
 
 export default async function AdminOrderDetailPage({ params }: AdminOrderDetailPageProps) {
+  await requirePermissionPage("view_orders");
   const { id } = await params;
   const order = await getOrderDetails(id).catch(() => null);
 

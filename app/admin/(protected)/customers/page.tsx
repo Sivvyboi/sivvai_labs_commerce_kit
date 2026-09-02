@@ -8,6 +8,7 @@
 import * as React from "react";
 import type { Metadata } from "next";
 
+import { requirePermissionPage } from "@/lib/auth/admin-guard";
 import { getAllCustomers } from "@/services/customer-service";
 import { CustomersTable } from "@/components/admin/tables/CustomersTable";
 import { AdminSearch } from "@/components/admin/ui/AdminSearch";
@@ -26,6 +27,7 @@ interface AdminCustomersPageProps {
 }
 
 export default async function AdminCustomersPage({ searchParams }: AdminCustomersPageProps) {
+  await requirePermissionPage("view_customers");
   const params = await searchParams;
   const search = params.q;
   const offset = Number(params.offset ?? 0);

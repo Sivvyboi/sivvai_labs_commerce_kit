@@ -12,6 +12,7 @@ import type { Metadata } from "next";
 import { ArrowLeft, Mail, Phone, MapPin, ShoppingBag } from "lucide-react";
 import { clsx } from "clsx";
 
+import { requirePermissionPage } from "@/lib/auth/admin-guard";
 import { getCustomerProfile } from "@/services/customer-service";
 import { getCustomerOrders } from "@/services/order-service";
 import { OrdersTable } from "@/components/admin/tables/OrdersTable";
@@ -38,6 +39,7 @@ function formatDate(iso: string): string {
 }
 
 export default async function AdminCustomerDetailPage({ params }: AdminCustomerDetailPageProps) {
+  await requirePermissionPage("view_customers");
   const { id } = await params;
   const [customer, orders] = await Promise.all([
     getCustomerProfile(id).catch(() => null),

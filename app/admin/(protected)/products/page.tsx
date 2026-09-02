@@ -12,6 +12,7 @@ import type { Metadata } from "next";
 import { Plus, Archive } from "lucide-react";
 import { clsx } from "clsx";
 
+import { requirePermissionPage } from "@/lib/auth/admin-guard";
 import { getAllProducts } from "@/services/product-service";
 import { ProductsTable } from "@/components/admin/tables/ProductsTable";
 import { AdminSearch } from "@/components/admin/ui/AdminSearch";
@@ -31,6 +32,7 @@ interface AdminProductsPageProps {
 }
 
 export default async function AdminProductsPage({ searchParams }: AdminProductsPageProps) {
+  await requirePermissionPage("manage_products");
   const params = await searchParams;
   const search = params.q;
   const status = params.status && params.status !== "all" ? params.status : undefined;

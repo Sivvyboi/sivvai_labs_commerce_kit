@@ -8,6 +8,7 @@
 import * as React from "react";
 import type { Metadata } from "next";
 
+import { requirePermissionPage } from "@/lib/auth/admin-guard";
 import { getAllCategories } from "@/services/category-service";
 import { CategoryManager } from "./CategoryManager";
 
@@ -16,6 +17,7 @@ export const metadata: Metadata = {
 };
 
 export default async function AdminCategoriesPage() {
+  await requirePermissionPage("manage_categories");
   const categories = await getAllCategories();
 
   return (

@@ -10,6 +10,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { clsx } from "clsx";
 
+import { requirePermissionPage } from "@/lib/auth/admin-guard";
 import { getInventoryWithVariants, getLowStockItems } from "@/services/inventory-service";
 import { InventoryTable } from "@/components/admin/tables/InventoryTable";
 
@@ -24,6 +25,7 @@ interface AdminInventoryPageProps {
 }
 
 export default async function AdminInventoryPage({ searchParams }: AdminInventoryPageProps) {
+  await requirePermissionPage("manage_inventory");
   const params = await searchParams;
   const filterLowStock = params.lowStock === "true";
 

@@ -9,6 +9,7 @@ import * as React from "react";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 
+import { requirePermissionPage } from "@/lib/auth/admin-guard";
 import { getProductById } from "@/services/product-service";
 import { getCategories } from "@/services/category-service";
 import { EditProductForm } from "./EditProductForm";
@@ -26,6 +27,7 @@ export async function generateMetadata({ params }: EditProductPageProps): Promis
 }
 
 export default async function EditProductPage({ params }: EditProductPageProps) {
+  await requirePermissionPage("manage_products");
   const { id } = await params;
   const [product, categories] = await Promise.all([
     getProductById(id).catch(() => null),

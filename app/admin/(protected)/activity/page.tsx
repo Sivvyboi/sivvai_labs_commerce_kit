@@ -11,6 +11,7 @@ import type { Metadata } from "next";
 import { Activity, ShoppingBag, Warehouse, MessageSquare, User, ArrowRight } from "lucide-react";
 import { clsx } from "clsx";
 
+import { requirePermissionPage } from "@/lib/auth/admin-guard";
 import { getSystemActivityFeed } from "@/features/admin/utils/activity";
 
 export const metadata: Metadata = {
@@ -28,6 +29,7 @@ function formatDate(iso: string): string {
 }
 
 export default async function AdminActivityPage() {
+  await requirePermissionPage("view_activity");
   const feed = await getSystemActivityFeed(40);
 
   const iconMap = {

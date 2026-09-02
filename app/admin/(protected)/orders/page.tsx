@@ -10,6 +10,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { clsx } from "clsx";
 
+import { requirePermissionPage } from "@/lib/auth/admin-guard";
 import { getAllOrders } from "@/services/order-service";
 import { OrdersTable } from "@/components/admin/tables/OrdersTable";
 import { AdminSearch } from "@/components/admin/ui/AdminSearch";
@@ -44,6 +45,7 @@ function getFromDateForPeriod(period?: string): string | undefined {
 }
 
 export default async function AdminOrdersPage({ searchParams }: AdminOrdersPageProps) {
+  await requirePermissionPage("view_orders");
   const params = await searchParams;
   const search = params.q;
   const status = params.status;

@@ -12,6 +12,7 @@ import type { Metadata } from "next";
 import { ArrowLeft, Archive } from "lucide-react";
 import { clsx } from "clsx";
 
+import { requirePermissionPage } from "@/lib/auth/admin-guard";
 import { getAllProducts } from "@/services/product-service";
 import { ArchivedProductsTable } from "@/components/admin/tables/ArchivedProductsTable";
 import { AdminSearch } from "@/components/admin/ui/AdminSearch";
@@ -30,6 +31,7 @@ interface ArchivedProductsPageProps {
 }
 
 export default async function ArchivedProductsPage({ searchParams }: ArchivedProductsPageProps) {
+  await requirePermissionPage("manage_products");
   const params = await searchParams;
   const search = params.q;
   const offset = Number(params.offset ?? 0);

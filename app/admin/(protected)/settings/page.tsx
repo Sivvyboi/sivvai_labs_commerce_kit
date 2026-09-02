@@ -8,6 +8,7 @@
 import * as React from "react";
 import type { Metadata } from "next";
 
+import { requirePermissionPage } from "@/lib/auth/admin-guard";
 import { getStoreSettings, getBrandProfile, getFeatureFlags } from "@/services/store-service";
 import { StoreSettingsManager } from "./StoreSettingsManager";
 
@@ -16,6 +17,7 @@ export const metadata: Metadata = {
 };
 
 export default async function AdminSettingsPage() {
+  await requirePermissionPage("manage_settings");
   const [settings, brand, flags] = await Promise.all([
     getStoreSettings(),
     getBrandProfile(),

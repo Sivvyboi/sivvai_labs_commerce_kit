@@ -8,6 +8,7 @@
 import * as React from "react";
 import type { Metadata } from "next";
 
+import { requirePermissionPage } from "@/lib/auth/admin-guard";
 import { getAllPromotions } from "@/services/promotion-service";
 import { PromotionManager } from "./PromotionManager";
 
@@ -16,6 +17,7 @@ export const metadata: Metadata = {
 };
 
 export default async function AdminPromotionsPage() {
+  await requirePermissionPage("manage_promotions");
   const promotions = await getAllPromotions();
 
   return (
