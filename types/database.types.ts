@@ -84,6 +84,27 @@ export interface Database {
         };
         Relationships: [];
       };
+      admin_user_permissions: {
+        Row: {
+          admin_user_id: string;
+          permission_id: string;
+          is_granted: boolean;
+          created_at: string;
+        };
+        Insert: {
+          admin_user_id: string;
+          permission_id: string;
+          is_granted?: boolean;
+          created_at?: string;
+        };
+        Update: {
+          admin_user_id?: string;
+          permission_id?: string;
+          is_granted?: boolean;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
       audit_logs: {
         Row: {
           id: string;

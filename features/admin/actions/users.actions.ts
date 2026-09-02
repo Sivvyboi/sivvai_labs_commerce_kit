@@ -387,6 +387,7 @@ export async function reactivateAdminUserAction(adminId: string) {
       entityId: adminId,
       metadata: {
         actor_email: callerCtx.user.email,
+        target_admin_id: adminId,
       },
     });
 
@@ -397,6 +398,311 @@ export async function reactivateAdminUserAction(adminId: string) {
     return {
       success: false,
       error: err instanceof Error ? err.message : "Failed to reactivate admin user",
+    };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Permission Override Types
+// ---------------------------------------------------------------------------
+
+export type PermissionOverrideMode = "inherit" | "grant" | "deny";
+
+export interface AdminUserPermissionRow {
+  id: string;
+  key: string;
+  description: string | null;
+  /** Whether the target admin's base role grants this permission */
+  from_role: boolean;
+  /** Explicit per-user override state */
+  override: PermissionOverrideMode;
+  /** Computed effective permission (role ∪ grants − denies, with manage_users invariant) */
+  effective: boolean;
+  /**
+   * True for manage_users — Owner-only system permission that cannot be
+   * manipulated via user-level overrides regardless of caller intent.
+   */
+  is_locked: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// getAdminUserPermissionsAction
+// ---------------------------------------------------------------------------
+
+/**
+ * Retrieves the full permission state for a target admin user.
+ * Returns role baseline, explicit override, and effective access for every permission.
+ * Requires manage_users. Protected Owners are represented as fully-effective read-only.
+ */
+export async function getAdminUserPermissionsAction(adminId: string) {
+  try {
+    await requirePermission("manage_users");
+
+    if (!adminId || typeof adminId !== "string") {
+      throw new Error("Invalid adminId");
+    }
+
+    const adminSupabase = createAdminClient();
+
+    // 1. Fetch target admin with their role
+    const { data: targetRaw, error: targetErr } = await adminSupabase
+      .from("admin_users")
+      .select(`
+        id,
+        role_id,
+        is_protected_owner,
+        roles (
+          id,
+          key,
+          name
+        )
+      `)
+      .eq("id", adminId)
+      .single();
+
+    if (targetErr || !targetRaw) {
+      throw new Error("Administrator record not found");
+    }
+
+    const target = targetRaw as unknown as {
+      id: string;
+      role_id: string | null;
+      is_protected_owner: boolean;
+      roles: { id: string; key: string; name: string } | null;
+    };
+
+    // 2. Fetch all permissions, role_permissions for target role, and override rows in parallel
+    const [allPermsRes, rolePermsRes, overridesRes] = await Promise.all([
+      adminSupabase.from("permissions").select("id, key, description").order("key"),
+      target.role_id
+        ? adminSupabase
+            .from("role_permissions")
+            .select("permission_id")
+            .eq("role_id", target.role_id)
+        : Promise.resolve({ data: [] as { permission_id: string }[], error: null }),
+      adminSupabase
+        .from("admin_user_permissions")
+        .select("permission_id, is_granted")
+        .eq("admin_user_id", adminId),
+    ]);
+
+    if (allPermsRes.error) throw new Error("Failed to load permissions");
+    if (rolePermsRes.error) throw new Error("Failed to load role permissions");
+    if (overridesRes.error) throw new Error("Failed to load user permission overrides");
+
+    const allPerms = (allPermsRes.data ?? []) as {
+      id: string;
+      key: string;
+      description: string | null;
+    }[];
+
+    const rolePermIds = new Set(
+      ((rolePermsRes.data ?? []) as { permission_id: string }[]).map((r) => r.permission_id)
+    );
+
+    const overrideMap = new Map<string, boolean>(
+      ((overridesRes.data ?? []) as { permission_id: string; is_granted: boolean }[]).map((o) => [
+        o.permission_id,
+        o.is_granted,
+      ])
+    );
+
+    // 3. Build the structured permission rows
+    const rows: AdminUserPermissionRow[] = allPerms.map((perm) => {
+      const isLocked = perm.key === "manage_users";
+      const fromRole = rolePermIds.has(perm.id);
+
+      let override: PermissionOverrideMode = "inherit";
+      if (overrideMap.has(perm.id)) {
+        override = overrideMap.get(perm.id) ? "grant" : "deny";
+      }
+
+      let effective: boolean;
+      if (target.is_protected_owner) {
+        // Protected owners have all permissions regardless of anything
+        effective = true;
+      } else if (isLocked) {
+        // manage_users is always false for non-protected owners
+        effective = false;
+      } else if (override === "grant") {
+        effective = true;
+      } else if (override === "deny") {
+        effective = false;
+      } else {
+        // INHERIT: falls back to role
+        effective = fromRole;
+      }
+
+      return {
+        id: perm.id,
+        key: perm.key,
+        description: perm.description,
+        from_role: fromRole,
+        override,
+        effective,
+        is_locked: isLocked,
+      };
+    });
+
+    return {
+      success: true as const,
+      permissions: rows,
+      isProtectedOwner: target.is_protected_owner,
+      roleName: target.roles?.name ?? null,
+    };
+  } catch (err) {
+    return {
+      success: false as const,
+      error: err instanceof Error ? err.message : "Failed to load user permissions",
+    };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// setAdminUserPermissionOverrideAction
+// ---------------------------------------------------------------------------
+
+/**
+ * Sets, updates, or removes a per-user permission override for a target admin.
+ * Enforces all RBAC invariants server-side:
+ *  - Requires manage_users (caller must be a protected Owner)
+ *  - Protected Owner targets: all overrides rejected
+ *  - manage_users permission: rejected for any non-protected target
+ *  - Writes detailed audit log on every successful mutation
+ */
+export async function setAdminUserPermissionOverrideAction(params: {
+  adminId: string;
+  permissionId: string;
+  mode: PermissionOverrideMode;
+}) {
+  try {
+    const callerCtx = await requirePermission("manage_users");
+
+    // 1. Validate inputs
+    if (!params.adminId || typeof params.adminId !== "string") {
+      throw new Error("Invalid adminId");
+    }
+    if (!params.permissionId || typeof params.permissionId !== "string") {
+      throw new Error("Invalid permissionId");
+    }
+    const validModes: PermissionOverrideMode[] = ["inherit", "grant", "deny"];
+    if (!validModes.includes(params.mode)) {
+      throw new Error(`Invalid mode '${params.mode}'. Must be one of: inherit, grant, deny`);
+    }
+
+    const adminSupabase = createAdminClient();
+
+    // 2. Fetch target admin
+    const { data: targetRaw, error: targetErr } = await adminSupabase
+      .from("admin_users")
+      .select("id, auth_user_id, is_protected_owner, roles(key, name)")
+      .eq("id", params.adminId)
+      .single();
+
+    if (targetErr || !targetRaw) {
+      throw new Error("Target administrator record not found");
+    }
+
+    const target = targetRaw as unknown as {
+      id: string;
+      auth_user_id: string;
+      is_protected_owner: boolean;
+      roles: { key: string; name: string } | null;
+    };
+
+    // 3. Invariant: Protected Owners cannot have per-user overrides set
+    if (target.is_protected_owner) {
+      throw new Error(
+        "Protected Owner accounts cannot have per-user permission overrides. Protected Owners retain full system access."
+      );
+    }
+
+    // 4. Fetch the permission record to verify it exists and get its key
+    const { data: permRecord, error: permErr } = await adminSupabase
+      .from("permissions")
+      .select("id, key, description")
+      .eq("id", params.permissionId)
+      .single();
+
+    if (permErr || !permRecord) {
+      throw new Error("Permission not found");
+    }
+
+    const perm = permRecord as { id: string; key: string; description: string | null };
+
+    // 5. Invariant: manage_users is Owner-only system permission — cannot be overridden
+    if (perm.key === "manage_users") {
+      throw new Error(
+        "'manage_users' is a system-level Owner-only permission and cannot be manipulated through per-user overrides."
+      );
+    }
+
+    // 6. Read current override state (for audit log)
+    const { data: currentOverride } = await adminSupabase
+      .from("admin_user_permissions")
+      .select("is_granted")
+      .eq("admin_user_id", params.adminId)
+      .eq("permission_id", params.permissionId)
+      .maybeSingle();
+
+    const previousMode: PermissionOverrideMode =
+      currentOverride == null
+        ? "inherit"
+        : currentOverride.is_granted
+        ? "grant"
+        : "deny";
+
+    // 7. Apply DB mutation
+    if (params.mode === "inherit") {
+      // INHERIT: remove override row entirely
+      const { error: deleteErr } = await adminSupabase
+        .from("admin_user_permissions")
+        .delete()
+        .eq("admin_user_id", params.adminId)
+        .eq("permission_id", params.permissionId);
+
+      if (deleteErr) throw new Error(`Failed to remove override: ${deleteErr.message}`);
+    } else {
+      // GRANT or DENY: upsert override row
+      const { error: upsertErr } = await adminSupabase
+        .from("admin_user_permissions")
+        .upsert(
+          {
+            admin_user_id: params.adminId,
+            permission_id: params.permissionId,
+            is_granted: params.mode === "grant",
+          },
+          { onConflict: "admin_user_id,permission_id" }
+        );
+
+      if (upsertErr) throw new Error(`Failed to set override: ${upsertErr.message}`);
+    }
+
+    // 8. Audit log
+    await logAuditEvent({
+      action: "admin_user.permission_override",
+      entityType: "admin_user",
+      entityId: params.adminId,
+      metadata: {
+        actor_email: callerCtx.user.email,
+        target_auth_user_id: target.auth_user_id,
+        target_role: target.roles?.name ?? "None",
+        permission_key: perm.key,
+        permission_description: perm.description,
+        previous_mode: previousMode,
+        new_mode: params.mode,
+      },
+    });
+
+    revalidatePath("/admin/users");
+    revalidatePath(`/admin/users/${params.adminId}`);
+    revalidatePath("/admin/team/members");
+
+    return { success: true as const };
+  } catch (err) {
+    return {
+      success: false as const,
+      error: err instanceof Error ? err.message : "Failed to update permission override",
     };
   }
 }
