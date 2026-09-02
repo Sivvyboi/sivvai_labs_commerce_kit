@@ -30,7 +30,7 @@ import {
 
 export async function createShippingZoneAction(input: CreateShippingZoneInput) {
   try {
-    await requirePermission("manage_settings");
+    await requirePermission("manage_shipping");
     const validated = CreateShippingZoneSchema.parse(input);
     const zone = await shippingService.createShippingZoneAdmin(validated);
 
@@ -55,7 +55,7 @@ export async function createShippingZoneAction(input: CreateShippingZoneInput) {
 
 export async function updateShippingZoneAction(input: UpdateShippingZoneInput) {
   try {
-    await requirePermission("manage_settings");
+    await requirePermission("manage_shipping");
     const validated = UpdateShippingZoneSchema.parse(input);
     const { id, ...data } = validated;
     const zone = await shippingService.updateShippingZoneAdmin(id, data);
@@ -81,7 +81,7 @@ export async function updateShippingZoneAction(input: UpdateShippingZoneInput) {
 
 export async function deleteShippingZoneAction(id: string) {
   try {
-    await requirePermission("manage_settings");
+    await requirePermission("manage_shipping");
     await shippingService.deleteShippingZoneAdmin(id);
 
     await logAuditEvent({
@@ -108,7 +108,7 @@ export async function deleteShippingZoneAction(id: string) {
 
 export async function createFulfilmentMethodAction(input: CreateFulfilmentMethodInput) {
   try {
-    await requirePermission("manage_settings");
+    await requirePermission("manage_shipping");
     const validated = CreateFulfilmentMethodSchema.parse(input);
     const method = await shippingService.createFulfilmentMethodAdmin(validated);
 
@@ -134,7 +134,7 @@ export async function createFulfilmentMethodAction(input: CreateFulfilmentMethod
 
 export async function updateFulfilmentMethodAction(input: UpdateFulfilmentMethodInput) {
   try {
-    await requirePermission("manage_settings");
+    await requirePermission("manage_shipping");
     const validated = UpdateFulfilmentMethodSchema.parse(input);
     const { id, ...data } = validated;
     const method = await shippingService.updateFulfilmentMethodAdmin(id, data);
@@ -161,7 +161,7 @@ export async function updateFulfilmentMethodAction(input: UpdateFulfilmentMethod
 
 export async function toggleFulfilmentMethodStatusAction(id: string, isEnabled: boolean) {
   try {
-    await requirePermission("manage_settings");
+    await requirePermission("manage_shipping");
     const method = await shippingService.updateFulfilmentMethodAdmin(id, { is_enabled: isEnabled });
 
     await logAuditEvent({
@@ -186,7 +186,7 @@ export async function toggleFulfilmentMethodStatusAction(id: string, isEnabled: 
 
 export async function deleteFulfilmentMethodAction(id: string) {
   try {
-    await requirePermission("manage_settings");
+    await requirePermission("manage_shipping");
     await shippingService.deleteFulfilmentMethodAdmin(id);
 
     await logAuditEvent({
@@ -214,7 +214,7 @@ export async function deleteFulfilmentMethodAction(id: string) {
 
 export async function upsertShippingRateAction(input: UpsertShippingRateInput) {
   try {
-    await requirePermission("manage_settings");
+    await requirePermission("manage_shipping");
     const validated = UpsertShippingRateSchema.parse(input);
     const rate = await shippingService.upsertShippingRateAdmin(validated);
 
@@ -239,7 +239,7 @@ export async function upsertShippingRateAction(input: UpsertShippingRateInput) {
 
 export async function deleteShippingRateAction(id: string) {
   try {
-    await requirePermission("manage_settings");
+    await requirePermission("manage_shipping");
     await shippingService.deleteShippingRateAdmin(id);
 
     await logAuditEvent({

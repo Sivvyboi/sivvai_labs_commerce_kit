@@ -50,6 +50,10 @@ export async function canManagePromotions(): Promise<boolean> {
   return checkPermission("manage_promotions");
 }
 
+export async function canManageShipping(): Promise<boolean> {
+  return checkPermission("manage_shipping");
+}
+
 export async function canManageSettings(): Promise<boolean> {
   return checkPermission("manage_settings");
 }

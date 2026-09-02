@@ -20,7 +20,7 @@ export const metadata: Metadata = {
 };
 
 export default async function AdminShippingPage() {
-  await requirePermissionPage("manage_settings");
+  await requirePermissionPage("manage_shipping");
 
   const [zones, methods] = await Promise.all([
     getAllShippingZonesAdmin(),
