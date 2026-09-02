@@ -96,21 +96,77 @@ export const getCurrentAdminContext = cache(async (): Promise<AdminContext | nul
 
   let permissions: string[] = [];
 
-  if (adminRecord.role_id) {
-    const { data: permRecords } = await supabase
-      .from("role_permissions")
-      .select(`
-        permissions (
-          key
-        )
-      `)
-      .eq("role_id", adminRecord.role_id);
+  // Protected owners always retain ALL effective permissions with complete immunity
+  if (adminRecord.is_protected_owner) {
+    const { data: allPermRecords, error: permsError } = await supabase
+      .from("permissions")
+      .select("key");
 
-    if (permRecords) {
-      permissions = (permRecords as unknown as Array<{ permissions: { key: string } | null }>)
-        .map((p) => p.permissions?.key)
-        .filter((k): k is string => Boolean(k));
+    if (permsError) {
+      console.error("[getCurrentAdminContext] Error fetching all permissions for protected owner:", permsError.message);
+      return null; // Fail closed
     }
+
+    permissions = (allPermRecords ?? [])
+      .map((p) => p.key)
+      .filter((k): k is string => Boolean(k));
+  } else {
+    // Fetch base role permissions & per-user overrides in parallel
+    const [rolePermsRes, overridesRes] = await Promise.all([
+      adminRecord.role_id
+        ? supabase
+            .from("role_permissions")
+            .select(`
+              permissions (
+                key
+              )
+            `)
+            .eq("role_id", adminRecord.role_id)
+        : Promise.resolve({ data: [], error: null }),
+      supabase
+        .from("admin_user_permissions")
+        .select(`
+          is_granted,
+          permissions (
+            key
+          )
+        `)
+        .eq("admin_user_id", adminRecord.id),
+    ]);
+
+    if (rolePermsRes.error) {
+      console.error("[getCurrentAdminContext] Error fetching role_permissions:", rolePermsRes.error.message);
+      return null; // Fail closed
+    }
+    if (overridesRes.error) {
+      console.error("[getCurrentAdminContext] Error fetching admin_user_permissions:", overridesRes.error.message);
+      return null; // Fail closed
+    }
+
+    // 1. Base role permissions (INHERIT base)
+    const roleKeys = ((rolePermsRes.data ?? []) as unknown as Array<{ permissions: { key: string } | null }>)
+      .map((p) => p.permissions?.key)
+      .filter((k): k is string => Boolean(k));
+
+    const effectiveSet = new Set<string>(roleKeys);
+
+    // 2. Apply per-user overrides (GRANT = true adds, DENY = false removes)
+    const overrides = (overridesRes.data ?? []) as unknown as Array<{
+      is_granted: boolean;
+      permissions: { key: string } | null;
+    }>;
+
+    for (const ov of overrides) {
+      const key = ov.permissions?.key;
+      if (!key) continue;
+      if (ov.is_granted) {
+        effectiveSet.add(key);
+      } else {
+        effectiveSet.delete(key);
+      }
+    }
+
+    permissions = Array.from(effectiveSet);
   }
 
   return {
@@ -131,11 +187,16 @@ export const getCurrentAdminContext = cache(async (): Promise<AdminContext | nul
 
 /**
  * Checks if the current authenticated admin user has a specific permission.
+ * Respects effective permissions and permission hierarchy (manage_* implies view_*).
  */
 export async function checkPermission(permission: string): Promise<boolean> {
   const ctx = await getCurrentAdminContext();
   if (!ctx) return false;
-  return ctx.permissions.includes(permission);
+  return (
+    ctx.permissions.includes(permission) ||
+    (permission === "view_orders" && ctx.permissions.includes("manage_orders")) ||
+    (permission === "view_customers" && ctx.permissions.includes("manage_customers"))
+  );
 }
 
 /**
