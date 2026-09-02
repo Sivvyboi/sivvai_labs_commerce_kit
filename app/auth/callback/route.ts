@@ -12,7 +12,7 @@
 import { type EmailOtpType, type User } from "@supabase/supabase-js";
 import { type NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { acceptAdminInvitation } from "@/features/admin/actions/invitations.actions";
+import { acceptAdminInvitation } from "@/services/admin-invitations-service";
 import { syncCustomerOnOAuthLogin } from "@/services/customer-service";
 import { mergeCartOnLoginAction } from "@/features/storefront/actions/cart.actions";
 import { logger } from "@/lib/logger";

@@ -1,11 +1,10 @@
 /**
  * scripts/verify-phase4.ts
  *
- * Comprehensive Real-Database Verification Suite for Phase 4:
- * 1. Owner-only manage_users enforcement across application & database
- * 2. Inactive-admin re-invitation lifecycle, reactivation, & role updates
- * 3. Preservation of existing admin IDs, historical links, and overrides
- * 4. Protected Owner safeguards & final Owner protection
+ * Real-Database Verification Suite for Phase 4:
+ * Direct testing of the production `acceptAdminInvitation` function,
+ * PostgreSQL transactional RPC atomicity, concurrency race safety,
+ * Owner-only `manage_users` enforcement, and active/inactive admin invariants.
  */
 
 import fs from "fs";
@@ -31,6 +30,9 @@ if (fs.existsSync(envPath)) {
     }
   }
 }
+
+// DIRECT PRODUCTION IMPORT FROM DOMAIN SERVICE
+import { acceptAdminInvitation } from "../services/admin-invitations-service";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -151,7 +153,9 @@ async function resolveAdminContext(
     permissions = Array.from(effectiveSet);
   }
 
-  const roleObj = Array.isArray(admin.roles) ? (admin.roles as unknown as Array<{ id: string; key: string; name: string }>)[0] : admin.roles;
+  const roleObj = Array.isArray(admin.roles)
+    ? (admin.roles as unknown as Array<{ id: string; key: string; name: string }>)[0]
+    : admin.roles;
 
   return {
     user: { id: admin.auth_user_id, email: "" },
@@ -239,81 +243,9 @@ async function removeOverride(adminId: string, permissionKey: string) {
   await serviceClient.from("admin_user_permissions").delete().eq("admin_user_id", adminId).eq("permission_id", perm.id);
 }
 
-/** Simulates the acceptAdminInvitation server logic using serviceClient */
-async function processAcceptInvitation(params: {
-  token: string;
-  authUserId: string;
-  email: string;
-}) {
-  const { data: invitation, error: invErr } = await serviceClient
-    .from("admin_invitations")
-    .select("id, email, role_id, status, expires_at")
-    .eq("token", params.token)
-    .eq("status", "pending")
-    .maybeSingle();
-
-  if (invErr || !invitation) return { success: false, error: "invitation_invalid" };
-
-  if (new Date(invitation.expires_at) < new Date()) {
-    await serviceClient.from("admin_invitations").update({ status: "expired" }).eq("id", invitation.id);
-    return { success: false, error: "invitation_expired" };
-  }
-
-  if (params.email.toLowerCase() !== invitation.email.toLowerCase()) {
-    return { success: false, error: "invitation_email_mismatch" };
-  }
-
-  const { data: existingAdmin } = await serviceClient
-    .from("admin_users")
-    .select("id, is_active, is_protected_owner, role_id")
-    .eq("auth_user_id", params.authUserId)
-    .maybeSingle();
-
-  let adminId: string;
-  let isReactivated = false;
-
-  if (!existingAdmin) {
-    const { data: newAdmin, error: insertErr } = await serviceClient
-      .from("admin_users")
-      .insert({
-        auth_user_id: params.authUserId,
-        role_id: invitation.role_id,
-        is_active: true,
-        is_protected_owner: false,
-      })
-      .select("id")
-      .single();
-
-    if (insertErr || !newAdmin) return { success: false, error: "invitation_failed" };
-    adminId = newAdmin.id;
-  } else {
-    adminId = existingAdmin.id;
-    if (!existingAdmin.is_protected_owner) {
-      const { error: updateErr } = await serviceClient
-        .from("admin_users")
-        .update({
-          is_active: true,
-          role_id: invitation.role_id,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", existingAdmin.id);
-
-      if (updateErr) return { success: false, error: "invitation_failed" };
-      isReactivated = !existingAdmin.is_active;
-    }
-  }
-
-  await serviceClient.from("admin_invitations").update({
-    status: "accepted",
-    accepted_at: new Date().toISOString(),
-  }).eq("id", invitation.id);
-
-  return { success: true, adminId, isReactivated };
-}
-
 async function main() {
   console.log("\n===========================================================");
-  console.log("   Phase 4: Owner-Only User Management & Inactive-Admin Tests");
+  console.log("   Phase 4 Real Production Verification Suite");
   console.log("===========================================================\n");
 
   let cleanupErrors = 0;
@@ -323,7 +255,7 @@ async function main() {
     const roleMap = Object.fromEntries((roles ?? []).map((r) => [r.key, r.id]));
 
     // -------------------------------------------------------------------------
-    // 1. Authorization: Owner-only manage_users enforcement
+    // 1. Authorization: Owner-Only manage_users Enforcement
     // -------------------------------------------------------------------------
     console.log("--- 1. Authorization: Owner-Only manage_users Enforcement ---");
     const owner = await createTempAdmin("owner", true, true);
@@ -348,7 +280,6 @@ async function main() {
     await removeOverride(manager.adminId, "manage_users");
 
     // 6. Non-protected staff cannot gain manage_users through role assignment containing manage_users
-    // Temporarily grant manage_users to editor's role in role_permissions
     const { data: manageUsersPerm } = await serviceClient.from("permissions").select("id").eq("key", "manage_users").single();
     if (manageUsersPerm && editor.roleId) {
       await serviceClient.from("role_permissions").insert({
@@ -369,11 +300,9 @@ async function main() {
     await removeOverride(owner.adminId, "manage_users");
 
     // -------------------------------------------------------------------------
-    // 2. Inactive-Admin Re-invitation Lifecycle
+    // 2. New Invitation Acceptance (Testing Production acceptAdminInvitation)
     // -------------------------------------------------------------------------
-    console.log("\n--- 2. Inactive-Admin Re-invitation Lifecycle ---");
-
-    // 8. New invitation creates expected admin state
+    console.log("\n--- 2. New Invitation Acceptance (Production Function) ---");
     const nonceNew = `${Date.now()}_new`;
     const newEmail = `new_invite_${nonceNew}@sivvai-test.local`;
     const { data: authNew } = await serviceClient.auth.admin.createUser({
@@ -397,18 +326,27 @@ async function main() {
     if (!invNew) throw new Error("Failed to create invitation record");
     createdInvitationIds.push(invNew.id);
 
-    const newAcceptRes = await processAcceptInvitation({
+    // DIRECT INVOCATION OF PRODUCTION FUNCTION
+    const newAcceptRes = await acceptAdminInvitation({
       token: tokenNew,
       authUserId: newAuthUserId,
       email: newEmail,
     });
-    assert(newAcceptRes.success, "8. New invitation acceptance succeeds");
-    const newCtx = await resolveAdminContext(serviceClient, newAuthUserId);
-    assert(newCtx?.admin.is_active === true && newCtx?.role?.key === "editor", "8b. New invite creates active Editor admin");
 
-    // 9. Inactive existing admin can be re-invited
+    assert(newAcceptRes.success, "8. Production acceptAdminInvitation succeeds for new admin");
+    const newCtx = await resolveAdminContext(serviceClient, newAuthUserId);
+    assert(newCtx?.role?.key === "editor", "9. Correct role is applied (Editor)");
+    assert(newCtx?.admin.is_active === true, "10. New admin is active");
+
+    const { data: invNewDb } = await serviceClient.from("admin_invitations").select("status").eq("id", invNew.id).single();
+    assert(invNewDb?.status === "accepted", "11. Invitation record becomes accepted");
+
+    // -------------------------------------------------------------------------
+    // 3. Inactive Re-invitation Lifecycle (Production Function)
+    // -------------------------------------------------------------------------
+    console.log("\n--- 3. Inactive Re-invitation Lifecycle (Production Function) ---");
     const inactiveStaff = await createTempAdmin("support", false, false);
-    // Add an override on inactive staff to test preservation
+    // Add an override to verify preservation
     await insertOverride(inactiveStaff.adminId, "manage_inventory", true);
 
     const tokenReinvite = randomBytes(32).toString("hex");
@@ -420,111 +358,214 @@ async function main() {
       status: "pending",
       expires_at: new Date(Date.now() + 86400000).toISOString(),
     }).select().single();
-    createdInvitationIds.push(invReinvite!.id);
+    if (!invReinvite) throw new Error("Failed to create reinvite record");
+    createdInvitationIds.push(invReinvite.id);
 
-    assert(Boolean(invReinvite), "9. Inactive existing admin can be successfully invited");
-
-    // 10 & 11. Re-invitation reactivates the same admin_users.id without duplicate rows
-    const acceptReinviteRes = await processAcceptInvitation({
+    // DIRECT INVOCATION OF PRODUCTION FUNCTION
+    const acceptReinviteRes = await acceptAdminInvitation({
       token: tokenReinvite,
       authUserId: inactiveStaff.authUserId,
       email: inactiveStaff.email,
     });
 
-    assert(acceptReinviteRes.success && acceptReinviteRes.isReactivated === true, "10. Re-invitation successfully reactivated inactive admin");
-    assert(acceptReinviteRes.adminId === inactiveStaff.adminId, "10b. Same admin_users.id is preserved upon reactivation");
+    assert(acceptReinviteRes.success && acceptReinviteRes.isReactivated === true, "12. Existing inactive admin successfully reactivated");
+    assert(acceptReinviteRes.adminId === inactiveStaff.adminId, "13. Existing admin_users.id is preserved");
+
+    const reactivatedCtx = await resolveAdminContext(serviceClient, inactiveStaff.authUserId);
+    assert(reactivatedCtx?.admin.is_active === true, "14. Admin is active after acceptance");
+    assert(reactivatedCtx?.role?.key === "manager", "15. New invited role is applied (Manager)");
+    assert(checkPermission(reactivatedCtx, "manage_inventory"), "16. Existing admin_user_permissions rows are preserved");
 
     const { data: allAdminRowsForUser } = await serviceClient
       .from("admin_users")
       .select("id")
       .eq("auth_user_id", inactiveStaff.authUserId);
 
-    assert(allAdminRowsForUser?.length === 1, "11. Re-invitation does not create a duplicate admin row");
+    assert(allAdminRowsForUser?.length === 1, "17. No duplicate admin_users row is created");
 
-    // 12. Invitation role is applied correctly
-    const reactivatedCtx = await resolveAdminContext(serviceClient, inactiveStaff.authUserId);
-    assert(reactivatedCtx?.admin.is_active === true, "12a. Reactivated admin is active");
-    assert(reactivatedCtx?.role?.key === "manager", "12b. Reactivated admin has new role applied (Manager)");
+    const { data: invReinviteDb } = await serviceClient.from("admin_invitations").select("status").eq("id", invReinvite.id).single();
+    assert(invReinviteDb?.status === "accepted", "18. Re-invitation becomes accepted");
 
-    // 13. Existing override rows are preserved
-    assert(checkPermission(reactivatedCtx, "manage_inventory"), "13. Existing per-user GRANT override (manage_inventory) is preserved after reactivation");
-
-    // 14. Expired / invalid invitation cannot reactivate an admin
+    // -------------------------------------------------------------------------
+    // 4. Failure, Rollback & Validation Checks (Production Function)
+    // -------------------------------------------------------------------------
+    console.log("\n--- 4. Failure, Rollback & Validation Checks ---");
     const inactiveStaff2 = await createTempAdmin("editor", false, false);
     const tokenExpired = randomBytes(32).toString("hex");
-    await serviceClient.from("admin_invitations").insert({
+    const { data: invExpired } = await serviceClient.from("admin_invitations").insert({
       email: inactiveStaff2.email,
       role_id: roleMap["manager"],
       invited_by: owner.adminId,
       token: tokenExpired,
       status: "pending",
       expires_at: new Date(Date.now() - 3600000).toISOString(), // Expired 1 hour ago
-    });
+    }).select().single();
+    if (invExpired) createdInvitationIds.push(invExpired.id);
 
-    const expiredAcceptRes = await processAcceptInvitation({
+    // Expired token attempt
+    const expiredRes = await acceptAdminInvitation({
       token: tokenExpired,
       authUserId: inactiveStaff2.authUserId,
       email: inactiveStaff2.email,
     });
-    assert(!expiredAcceptRes.success && expiredAcceptRes.error === "invitation_expired", "14. Expired invitation cannot reactivate admin");
-    const stillInactiveCtx = await resolveAdminContext(serviceClient, inactiveStaff2.authUserId);
-    assert(stillInactiveCtx === null, "14b. Admin remains inactive after failed expired invitation attempt");
+    assert(!expiredRes.success && expiredRes.error === "invitation_expired", "19. Expired invitation cannot reactivate an admin");
 
-    // 15. Invitation cannot be replayed after successful consumption
-    const replayRes = await processAcceptInvitation({
-      token: tokenReinvite, // already accepted in step 10
+    // Second attempt on expired
+    const expiredReplayRes = await acceptAdminInvitation({
+      token: tokenExpired,
+      authUserId: inactiveStaff2.authUserId,
+      email: inactiveStaff2.email,
+    });
+    assert(!expiredReplayRes.success && expiredReplayRes.error === "invitation_invalid", "20. Expired invitation marked expired and cannot be replayed");
+
+    // Invalid email attempt
+    const tokenValidForMismatch = randomBytes(32).toString("hex");
+    const { data: invMismatch } = await serviceClient.from("admin_invitations").insert({
+      email: inactiveStaff2.email,
+      role_id: roleMap["manager"],
+      invited_by: owner.adminId,
+      token: tokenValidForMismatch,
+      status: "pending",
+      expires_at: new Date(Date.now() + 86400000).toISOString(),
+    }).select().single();
+    if (invMismatch) createdInvitationIds.push(invMismatch.id);
+
+    const emailMismatchRes = await acceptAdminInvitation({
+      token: tokenValidForMismatch,
+      authUserId: inactiveStaff2.authUserId,
+      email: "wrong_email@sivvai-test.local",
+    });
+    assert(!emailMismatchRes.success && emailMismatchRes.error === "invitation_email_mismatch", "21. Invalid email cannot accept invitation");
+
+    // Invalid token attempt
+    const invalidTokenRes = await acceptAdminInvitation({
+      token: "non_existent_token_12345",
+      authUserId: inactiveStaff2.authUserId,
+      email: inactiveStaff2.email,
+    });
+    assert(!invalidTokenRes.success && invalidTokenRes.error === "invitation_invalid", "22. Invalid token cannot accept invitation");
+
+    // Verify admin remained inactive
+    const stillInactiveCtx = await resolveAdminContext(serviceClient, inactiveStaff2.authUserId);
+    assert(stillInactiveCtx === null, "23. Failed acceptance does not partially reactivate/create an admin");
+
+    // Verify invitation remained pending
+    const { data: invMismatchDb } = await serviceClient.from("admin_invitations").select("status").eq("id", invMismatch!.id).single();
+    assert(invMismatchDb?.status === "pending", "24. Invitation remains pending when validation fails");
+
+    // -------------------------------------------------------------------------
+    // 5. Replay & Concurrency Safety
+    // -------------------------------------------------------------------------
+    console.log("\n--- 5. Replay & Concurrency Safety ---");
+    // Replay attempt on consumed token
+    const replayRes = await acceptAdminInvitation({
+      token: tokenReinvite,
       authUserId: inactiveStaff.authUserId,
       email: inactiveStaff.email,
     });
-    assert(!replayRes.success && replayRes.error === "invitation_invalid", "15. Consumed invitation cannot be replayed");
+    assert(!replayRes.success && replayRes.error === "invitation_invalid", "25. Consumed invitation cannot be accepted again");
 
-    // 16. Existing active admin behavior remains unchanged
-    const activeManager = await createTempAdmin("manager", true, false);
-    const tokenActive = randomBytes(32).toString("hex");
-    await serviceClient.from("admin_invitations").insert({
-      email: activeManager.email,
+    // Concurrent race condition test: create 1 new invite and execute 2 simultaneous accept calls
+    const nonceRace = `${Date.now()}_race`;
+    const raceEmail = `race_test_${nonceRace}@sivvai-test.local`;
+    const { data: authRace } = await serviceClient.auth.admin.createUser({
+      email: raceEmail,
+      password: "TestPassword123!",
+      email_confirm: true,
+    });
+    if (!authRace?.user) throw new Error("Failed to create race auth user");
+    const raceAuthUserId = authRace.user.id;
+    createdAuthUserIds.push(raceAuthUserId);
+
+    const tokenRace = randomBytes(32).toString("hex");
+    const { data: invRace } = await serviceClient.from("admin_invitations").insert({
+      email: raceEmail,
       role_id: roleMap["editor"],
+      invited_by: owner.adminId,
+      token: tokenRace,
+      status: "pending",
+      expires_at: new Date(Date.now() + 86400000).toISOString(),
+    }).select().single();
+    if (!invRace) throw new Error("Failed to create race invitation");
+    createdInvitationIds.push(invRace.id);
+
+    // Launch two simultaneous acceptance attempts on the same invitation
+    const [raceRes1, raceRes2] = await Promise.all([
+      acceptAdminInvitation({
+        token: tokenRace,
+        authUserId: raceAuthUserId,
+        email: raceEmail,
+      }),
+      acceptAdminInvitation({
+        token: tokenRace,
+        authUserId: raceAuthUserId,
+        email: raceEmail,
+      }),
+    ]);
+
+    const raceSuccessCount = (raceRes1.success ? 1 : 0) + (raceRes2.success ? 1 : 0);
+    assert(raceSuccessCount === 1, "26. Two concurrent acceptance attempts produce exactly one success");
+
+    const { data: raceAdmins } = await serviceClient
+      .from("admin_users")
+      .select("id")
+      .eq("auth_user_id", raceAuthUserId);
+    assert(raceAdmins?.length === 1, "27. Exactly one admin state transition occurs under concurrency");
+
+    // -------------------------------------------------------------------------
+    // 6. Active Admin Safeguard
+    // -------------------------------------------------------------------------
+    console.log("\n--- 6. Active Admin Safeguard ---");
+    const activeAdmin = await createTempAdmin("support", true, false);
+    const tokenActive = randomBytes(32).toString("hex");
+    const { data: invActive } = await serviceClient.from("admin_invitations").insert({
+      email: activeAdmin.email,
+      role_id: roleMap["manager"], // Attempting to alter active admin's role
       invited_by: owner.adminId,
       token: tokenActive,
       status: "pending",
       expires_at: new Date(Date.now() + 86400000).toISOString(),
-    });
+    }).select().single();
+    createdInvitationIds.push(invActive!.id);
 
-    const activeAcceptRes = await processAcceptInvitation({
+    const activeAcceptRes = await acceptAdminInvitation({
       token: tokenActive,
-      authUserId: activeManager.authUserId,
-      email: activeManager.email,
+      authUserId: activeAdmin.authUserId,
+      email: activeAdmin.email,
     });
-    assert(activeAcceptRes.success && activeAcceptRes.adminId === activeManager.adminId, "16. Active admin invitation updates role without creating duplicate rows");
+
+    assert(!activeAcceptRes.success && activeAcceptRes.error === "already_active", "28. Active admin invitation is rejected (already_active)");
+    const activeCtxAfter = await resolveAdminContext(serviceClient, activeAdmin.authUserId);
+    assert(activeCtxAfter?.role?.key === "support", "29. Active admin role remains unchanged (Support)");
 
     // -------------------------------------------------------------------------
-    // 3. Owner Safeguards & Lockout Protection
+    // 7. Protected Owner Safeguards
     // -------------------------------------------------------------------------
-    console.log("\n--- 3. Protected Owner Safeguards & Lockout Protection ---");
-
-    // 17. Protected Owner cannot be accidentally downgraded through invitations
+    console.log("\n--- 7. Protected Owner Safeguards ---");
     const tokenOwnerInvite = randomBytes(32).toString("hex");
-    await serviceClient.from("admin_invitations").insert({
+    const { data: invOwner } = await serviceClient.from("admin_invitations").insert({
       email: owner.email,
       role_id: roleMap["support"], // Attempting to invite owner as Support
       invited_by: owner.adminId,
       token: tokenOwnerInvite,
       status: "pending",
       expires_at: new Date(Date.now() + 86400000).toISOString(),
-    });
+    }).select().single();
+    createdInvitationIds.push(invOwner!.id);
 
-    await processAcceptInvitation({
+    const ownerAcceptRes = await acceptAdminInvitation({
       token: tokenOwnerInvite,
       authUserId: owner.authUserId,
       email: owner.email,
     });
 
+    // Owner is already active, so it is safely rejected without modifying Owner
+    assert(!ownerAcceptRes.success, "30. Protected Owner invitation does not modify owner");
     const ownerAfterInvite = await resolveAdminContext(serviceClient, owner.authUserId);
-    assert(ownerAfterInvite?.admin.is_protected_owner === true, "17a. Protected Owner status is never removed");
-    assert(ownerAfterInvite?.admin.is_active === true, "17b. Protected Owner remains active");
-    assert(checkPermission(ownerAfterInvite, "manage_users"), "17c. Protected Owner retains manage_users");
+    assert(ownerAfterInvite?.admin.is_protected_owner === true, "31. Protected Owner status is preserved");
+    assert(checkPermission(ownerAfterInvite, "manage_users"), "32. Protected Owner retains manage_users");
 
-    // 18. Count active owners helper accuracy
+    // Active owner count
     const { data: ownerRole } = await serviceClient.from("roles").select("id").eq("key", "owner").single();
     if (ownerRole) {
       const { count: dbOwnerCount } = await serviceClient
@@ -533,7 +574,7 @@ async function main() {
         .eq("role_id", ownerRole.id)
         .eq("is_active", true);
 
-      assert((dbOwnerCount ?? 0) >= 1, "18. System has at least one active Owner");
+      assert((dbOwnerCount ?? 0) >= 1, "33. At least one active protected Owner remains in the system");
     }
   } finally {
     console.log("\n===========================================================");
