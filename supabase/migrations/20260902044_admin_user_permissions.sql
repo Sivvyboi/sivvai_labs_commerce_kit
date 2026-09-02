@@ -105,8 +105,8 @@ BEGIN
 END;
 $$;
 
-REVOKE EXECUTE ON FUNCTION private.admin_has_permission_direct(UUID, UUID, TEXT) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION private.admin_has_permission_direct(UUID, UUID, TEXT) TO authenticated, service_role;
+REVOKE EXECUTE ON FUNCTION private.admin_has_permission_direct(UUID, UUID, TEXT) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION private.admin_has_permission_direct(UUID, UUID, TEXT) TO service_role;
 
 -- ---------------------------------------------------------------------------
 -- 4. Central RLS Resolver: private.admin_has_permission
