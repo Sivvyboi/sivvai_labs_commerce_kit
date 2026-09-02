@@ -576,6 +576,47 @@ async function main() {
 
       assert((dbOwnerCount ?? 0) >= 1, "33. At least one active protected Owner remains in the system");
     }
+
+    // -------------------------------------------------------------------------
+    // 8. Security Privilege Boundary Audit: accept_admin_invitation_rpc
+    // -------------------------------------------------------------------------
+    console.log("\n--- 8. Privilege Boundary Audit: accept_admin_invitation_rpc ---");
+    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    if (anonKey && supabaseUrl) {
+      // 34. Anon client cannot invoke accept_admin_invitation_rpc
+      const anonClient = createClient(supabaseUrl, anonKey, {
+        auth: { autoRefreshToken: false, persistSession: false },
+      });
+      const invokeAnonRpc = anonClient as unknown as {
+        rpc: (fn: string, args: Record<string, unknown>) => Promise<{ error: unknown }>;
+      };
+      const { error: anonRpcErr } = await invokeAnonRpc.rpc("accept_admin_invitation_rpc", {
+        p_token: "test_token",
+        p_auth_user_id: editor.authUserId,
+        p_email: editor.email,
+      });
+      assert(Boolean(anonRpcErr), "34. Anon client cannot execute accept_admin_invitation_rpc (permission denied)");
+
+      // 35. Authenticated user client cannot invoke accept_admin_invitation_rpc
+      const userClient = createClient(supabaseUrl, anonKey, {
+        auth: { autoRefreshToken: false, persistSession: false },
+      });
+      const { error: signInErr } = await userClient.auth.signInWithPassword({
+        email: editor.email,
+        password: editor.password,
+      });
+      if (!signInErr) {
+        const invokeUserRpc = userClient as unknown as {
+          rpc: (fn: string, args: Record<string, unknown>) => Promise<{ error: unknown }>;
+        };
+        const { error: authRpcErr } = await invokeUserRpc.rpc("accept_admin_invitation_rpc", {
+          p_token: "test_token",
+          p_auth_user_id: editor.authUserId,
+          p_email: editor.email,
+        });
+        assert(Boolean(authRpcErr), "35. Authenticated user client cannot execute accept_admin_invitation_rpc (permission denied)");
+      }
+    }
   } finally {
     console.log("\n===========================================================");
     console.log("   Tearing Down Temporary Test Records...");
