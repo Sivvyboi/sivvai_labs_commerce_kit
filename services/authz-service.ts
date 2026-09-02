@@ -166,6 +166,13 @@ export const getCurrentAdminContext = cache(async (): Promise<AdminContext | nul
       }
     }
 
+    // INVARIANT: manage_users is strictly Owner-only.
+    // Non-protected staff members MUST NEVER obtain effective manage_users,
+    // even via role assignment or explicit per-user GRANT override.
+    if (!adminRecord.is_protected_owner) {
+      effectiveSet.delete("manage_users");
+    }
+
     permissions = Array.from(effectiveSet);
   }
 

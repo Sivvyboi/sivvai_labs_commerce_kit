@@ -12,7 +12,7 @@
 import { type EmailOtpType, type User } from "@supabase/supabase-js";
 import { type NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { acceptAdminInvitation } from "@/features/admin/actions/invitations.actions";
 import { syncCustomerOnOAuthLogin } from "@/services/customer-service";
 import { mergeCartOnLoginAction } from "@/features/storefront/actions/cart.actions";
 import { logger } from "@/lib/logger";
@@ -75,60 +75,17 @@ export async function GET(request: NextRequest) {
   }
 
   // --- Admin Invitation acceptance ---
-  if (type === "admin_invite" && invitationToken && authUser) {
+  if (type === "admin_invite" && invitationToken && authUser && authUser.email) {
     try {
-      const adminSupabase = createAdminClient();
+      const result = await acceptAdminInvitation({
+        token: invitationToken,
+        authUserId: authUser.id,
+        email: authUser.email,
+      });
 
-      // Look up the invitation
-      const { data: invitation, error: invErr } = await adminSupabase
-        .from("admin_invitations")
-        .select("id, email, role_id, status, expires_at")
-        .eq("token", invitationToken)
-        .eq("status", "pending")
-        .single();
-
-      if (invErr || !invitation) {
-        return NextResponse.redirect(`${origin}/admin/login?error=invitation_invalid`);
+      if (!result.success) {
+        return NextResponse.redirect(`${origin}/admin/login?error=${result.error || "invitation_failed"}`);
       }
-
-      // Check expiry
-      if (new Date(invitation.expires_at) < new Date()) {
-        await adminSupabase
-          .from("admin_invitations")
-          .update({ status: "expired" })
-          .eq("id", invitation.id);
-        return NextResponse.redirect(`${origin}/admin/login?error=invitation_expired`);
-      }
-
-      // Verify email matches
-      if (authUser.email?.toLowerCase() !== invitation.email.toLowerCase()) {
-        return NextResponse.redirect(`${origin}/admin/login?error=invitation_email_mismatch`);
-      }
-
-      // Check if admin_users record already exists
-      const { data: existingAdmin } = await adminSupabase
-        .from("admin_users")
-        .select("id")
-        .eq("auth_user_id", authUser.id)
-        .maybeSingle();
-
-      if (!existingAdmin) {
-        await adminSupabase.from("admin_users").insert({
-          auth_user_id: authUser.id,
-          role_id: invitation.role_id,
-          is_active: true,
-          is_protected_owner: false,
-        });
-      }
-
-      // Mark invitation as accepted
-      await adminSupabase
-        .from("admin_invitations")
-        .update({
-          status: "accepted",
-          accepted_at: new Date().toISOString(),
-        })
-        .eq("id", invitation.id);
 
       return NextResponse.redirect(`${origin}/admin?welcome=1`);
     } catch {

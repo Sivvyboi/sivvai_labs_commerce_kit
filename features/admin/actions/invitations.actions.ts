@@ -210,3 +210,132 @@ export async function revokeAdminInvitationAction(invitationId: string) {
     };
   }
 }
+
+/**
+ * Handles accepting an admin invitation.
+ * Correctly creates new admin records or reactivates existing inactive admins,
+ * applying the invited role while preserving existing admin ID and overrides.
+ */
+export async function acceptAdminInvitation(params: {
+  token: string;
+  authUserId: string;
+  email: string;
+}): Promise<{
+  success: boolean;
+  error?: "invitation_invalid" | "invitation_expired" | "invitation_email_mismatch" | "invitation_failed";
+  adminId?: string;
+  isReactivated?: boolean;
+}> {
+  const adminSupabase = createAdminClient();
+
+  // 1. Look up the pending invitation by token
+  const { data: invitation, error: invErr } = await adminSupabase
+    .from("admin_invitations")
+    .select("id, email, role_id, status, expires_at")
+    .eq("token", params.token)
+    .eq("status", "pending")
+    .maybeSingle();
+
+  if (invErr || !invitation) {
+    return { success: false, error: "invitation_invalid" };
+  }
+
+  // 2. Check expiration
+  if (new Date(invitation.expires_at) < new Date()) {
+    await adminSupabase
+      .from("admin_invitations")
+      .update({ status: "expired" })
+      .eq("id", invitation.id);
+    return { success: false, error: "invitation_expired" };
+  }
+
+  // 3. Verify canonical normalized email match
+  if (params.email.toLowerCase() !== invitation.email.toLowerCase()) {
+    return { success: false, error: "invitation_email_mismatch" };
+  }
+
+  // 4. Locate existing admin_users record by auth_user_id
+  const { data: existingAdmin, error: fetchErr } = await adminSupabase
+    .from("admin_users")
+    .select("id, is_active, is_protected_owner, role_id")
+    .eq("auth_user_id", params.authUserId)
+    .maybeSingle();
+
+  if (fetchErr) {
+    return { success: false, error: "invitation_failed" };
+  }
+
+  let adminId: string;
+  let isReactivated = false;
+
+  if (!existingAdmin) {
+    // Case A — New invite: Email has no existing admin_users record
+    const { data: newAdmin, error: insertErr } = await adminSupabase
+      .from("admin_users")
+      .insert({
+        auth_user_id: params.authUserId,
+        role_id: invitation.role_id,
+        is_active: true,
+        is_protected_owner: false,
+      })
+      .select("id")
+      .single();
+
+    if (insertErr || !newAdmin) {
+      return { success: false, error: "invitation_failed" };
+    }
+    adminId = newAdmin.id;
+  } else {
+    // Case B & C — Existing admin record (inactive re-invite or active admin)
+    adminId = existingAdmin.id;
+
+    // Safeguard: Never alter or downgrade a protected Owner
+    if (!existingAdmin.is_protected_owner) {
+      const { error: updateErr } = await adminSupabase
+        .from("admin_users")
+        .update({
+          is_active: true,
+          role_id: invitation.role_id,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", existingAdmin.id);
+
+      if (updateErr) {
+        return { success: false, error: "invitation_failed" };
+      }
+      isReactivated = !existingAdmin.is_active;
+    }
+  }
+
+  // 5. Consume invitation exactly once
+  const { error: acceptErr } = await adminSupabase
+    .from("admin_invitations")
+    .update({
+      status: "accepted",
+      accepted_at: new Date().toISOString(),
+    })
+    .eq("id", invitation.id);
+
+  if (acceptErr) {
+    return { success: false, error: "invitation_failed" };
+  }
+
+  // 6. Log audit event
+  try {
+    await adminSupabase.from("audit_logs").insert({
+      admin_user_id: adminId,
+      action: isReactivated ? "admin_invitation.accepted_reactivated" : "admin_invitation.accepted",
+      entity_type: "admin_invitation",
+      entity_id: invitation.id,
+      metadata: {
+        email: invitation.email,
+        role_id: invitation.role_id,
+        is_reactivated: isReactivated,
+      },
+    });
+  } catch (auditErr) {
+    console.warn("[acceptAdminInvitation] Non-fatal audit log failure:", auditErr);
+  }
+
+  return { success: true, adminId, isReactivated };
+}
