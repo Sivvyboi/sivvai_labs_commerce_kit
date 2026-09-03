@@ -375,6 +375,77 @@ async function main() {
     }
 
     // -------------------------------------------------------------------------
+    // Test Section C2: Case B — Existing Auth User Admin Invitation Flow
+    // -------------------------------------------------------------------------
+    console.log("\n--- Section C2: Case B — Existing Auth User Admin Invitation Flow ---");
+    {
+      const nonce = `${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+      const existingEmail = `existing_user_${nonce}@sivvai-test.local`;
+      const appToken = randomBytes(32).toString("hex");
+
+      // 1. Create confirmed existing Auth user (e.g. customer)
+      const existingAuthUserId = await getOrCreateAuthUser(existingEmail);
+      assert(Boolean(existingAuthUserId), "Existing user established in auth.users");
+
+      // 2. Create pending admin invitation for this email
+      const { data: inv, error: invErr } = await serviceClient
+        .from("admin_invitations")
+        .insert({
+          email: existingEmail,
+          role_id: editorRole.id,
+          token: appToken,
+          status: "pending",
+          expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+          invited_by: owner.adminId,
+        })
+        .select()
+        .single();
+
+      if (invErr || !inv) throw new Error(`Failed to insert invitation for existing user: ${invErr?.message}`);
+      createdInvitationIds.push(inv.id);
+
+      // Link application token in user_metadata (mimics sendAdminInvitationAction Case B handling)
+      await serviceClient.auth.admin.updateUserById(existingAuthUserId, {
+        user_metadata: {
+          admin_invitation_token: appToken,
+          role_id: editorRole.id,
+        },
+      });
+
+      // 3. Verify no duplicate Auth account was created
+      const { data: allUsers } = await serviceClient.auth.admin.listUsers();
+      const matches = allUsers.users.filter((u) => u.email?.toLowerCase() === existingEmail.toLowerCase());
+      assert(matches.length === 1, "No duplicate Auth account created for existing user");
+
+      // 4. Accept admin invitation as the existing authenticated user
+      const acceptRes = await acceptAdminInvitation({
+        token: appToken,
+        authUserId: existingAuthUserId,
+        email: existingEmail,
+      });
+
+      assert(acceptRes.success === true, "Existing user successfully accepted admin invitation");
+      assert(Boolean(acceptRes.adminId), "admin_users record created for existing Auth user");
+
+      // 5. Verify database state
+      const { data: checkAdmin } = await serviceClient
+        .from("admin_users")
+        .select("id, role_id, is_active")
+        .eq("auth_user_id", existingAuthUserId)
+        .single();
+      assert(checkAdmin?.is_active === true, "Existing user is now active in admin_users");
+      assert(checkAdmin?.role_id === editorRole.id, "Existing user assigned correct editor role");
+
+      const { data: checkInv } = await serviceClient
+        .from("admin_invitations")
+        .select("status, accepted_at")
+        .eq("id", inv.id)
+        .single();
+      assert(checkInv?.status === "accepted", "Invitation status updated to 'accepted'");
+      assert(Boolean(checkInv?.accepted_at), "Invitation has accepted_at timestamp populated");
+    }
+
+    // -------------------------------------------------------------------------
     // Test Section D: Historical Invariants (Accepted & Revoked)
     // -------------------------------------------------------------------------
     console.log("\n--- Section D: Historical Invariants (Accepted & Revoked) ---");

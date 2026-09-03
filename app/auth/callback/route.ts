@@ -75,19 +75,43 @@ export async function GET(request: NextRequest) {
   }
 
   // --- Admin Invitation acceptance ---
-  if (type === "admin_invite" && invitationToken && authUser && authUser.email) {
+  const isInviteFlow = type === "admin_invite" || type === "invite" || isExplicitAdmin;
+  if (isInviteFlow && authUser && authUser.email) {
     try {
-      const result = await acceptAdminInvitation({
-        token: invitationToken,
-        authUserId: authUser.id,
-        email: authUser.email,
-      });
+      let tokenToUse =
+        invitationToken || authUser.user_metadata?.admin_invitation_token;
 
-      if (!result.success) {
-        return NextResponse.redirect(`${origin}/admin/login?error=${result.error || "invitation_failed"}`);
+      if (!tokenToUse) {
+        const { createAdminClient } = await import("@/lib/supabase/admin");
+        const adminSupabase = createAdminClient();
+        const { data: pendingInv } = await adminSupabase
+          .from("admin_invitations")
+          .select("token")
+          .eq("email", authUser.email.toLowerCase())
+          .eq("status", "pending")
+          .gt("expires_at", new Date().toISOString())
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        tokenToUse = pendingInv?.token;
       }
 
-      return NextResponse.redirect(`${origin}/admin?welcome=1`);
+      if (tokenToUse) {
+        const result = await acceptAdminInvitation({
+          token: tokenToUse,
+          authUserId: authUser.id,
+          email: authUser.email,
+        });
+
+        if (!result.success) {
+          return NextResponse.redirect(
+            `${origin}/admin/login?error=${result.error || "invitation_failed"}`
+          );
+        }
+
+        return NextResponse.redirect(`${origin}/admin?welcome=1`);
+      }
     } catch {
       return NextResponse.redirect(`${origin}/admin/login?error=invitation_failed`);
     }

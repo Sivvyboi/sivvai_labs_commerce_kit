@@ -229,9 +229,13 @@ export async function resendAdminInvitation(
     const updated = updatedRaw as unknown as ResendAdminInvitationResult["invitation"];
 
     // 7. Deliver fresh invitation email via Supabase Auth (Supabase SMTP -> Gmail)
-    const redirectTo = `${process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"}/auth/callback?type=admin_invite&token=${newToken}`;
+    // Supabase will use the "Invite user" template: {{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=invite&next=/admin
+    const siteUrl =
+      process.env.NEXT_PUBLIC_SITE_URL ||
+      (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "https://sivvai-labs-commerce-kit.vercel.app");
+    const redirectTo = `${siteUrl}/auth/confirm?type=invite&next=/admin`;
 
-    let { error: inviteError } = await adminSupabase.auth.admin.inviteUserByEmail(
+    const { error: inviteError } = await adminSupabase.auth.admin.inviteUserByEmail(
       target.email.toLowerCase(),
       {
         redirectTo,
@@ -242,28 +246,22 @@ export async function resendAdminInvitation(
       }
     );
 
-    // If the email belongs to an existing registered user in auth.users, dispatch via Supabase OTP/magic link
+    // If recipient is already a registered user in auth.users (Case B), link the refreshed application token in metadata
     if (inviteError && inviteError.message?.toLowerCase().includes("already been registered")) {
-      const { createClient } = await import("@supabase/supabase-js");
-      const anonClient = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-        { auth: { autoRefreshToken: false, persistSession: false } }
+      const { data: userList } = await adminSupabase.auth.admin.listUsers();
+      const existingUser = userList?.users.find(
+        (u) => u.email?.toLowerCase() === target.email.toLowerCase()
       );
-      const otpRes = await anonClient.auth.signInWithOtp({
-        email: target.email.toLowerCase(),
-        options: {
-          emailRedirectTo: redirectTo,
-          data: {
+      if (existingUser) {
+        await adminSupabase.auth.admin.updateUserById(existingUser.id, {
+          user_metadata: {
+            ...existingUser.user_metadata,
             admin_invitation_token: newToken,
             role_id: target.role_id,
           },
-        },
-      });
-      inviteError = otpRes.error;
-    }
-
-    if (inviteError) {
+        });
+      }
+    } else if (inviteError) {
       return {
         success: false,
         error: `Failed to deliver invitation email: ${inviteError.message}`,

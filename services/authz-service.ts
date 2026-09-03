@@ -48,7 +48,8 @@ export const getCurrentAdminContext = cache(async (): Promise<AdminContext | nul
   const supabase = await createClient();
 
   // Fetch admin_users record with joined role
-  const { data: rawAdminRecord, error: adminError } = await supabase
+  let rawAdminRecord: unknown = null;
+  const { data: initialAdminRecord, error: adminError } = await supabase
     .from("admin_users")
     .select(`
       id,
@@ -68,14 +69,72 @@ export const getCurrentAdminContext = cache(async (): Promise<AdminContext | nul
     .eq("auth_user_id", user.id)
     .maybeSingle();
 
+  rawAdminRecord = initialAdminRecord;
+
   if (adminError) {
     console.error("[getCurrentAdminContext] Error fetching admin_users:", adminError.message);
     return null;
   }
 
   if (!rawAdminRecord) {
-    console.warn(`[getCurrentAdminContext] User ${user.id} (${user.email}) is authenticated but not in admin_users table. Run: npx tsx scripts/bootstrap-admin.ts ${user.email}`);
-    return null;
+    // If the user is authenticated but not yet in admin_users, check if they have an active pending invitation
+    if (user.email) {
+      try {
+        const { createAdminClient } = await import("@/lib/supabase/admin");
+        const adminSupabase = createAdminClient();
+        const { data: pendingInv } = await adminSupabase
+          .from("admin_invitations")
+          .select("token")
+          .eq("email", user.email.toLowerCase())
+          .eq("status", "pending")
+          .gt("expires_at", new Date().toISOString())
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (pendingInv?.token) {
+          const { acceptAdminInvitation } = await import("@/services/admin-invitations-service");
+          const acceptRes = await acceptAdminInvitation({
+            token: pendingInv.token,
+            authUserId: user.id,
+            email: user.email,
+          });
+
+          if (acceptRes.success) {
+            const { data: newlyCreatedAdmin } = await supabase
+              .from("admin_users")
+              .select(`
+                id,
+                auth_user_id,
+                role_id,
+                is_active,
+                is_protected_owner,
+                created_at,
+                updated_at,
+                roles (
+                  id,
+                  key,
+                  name,
+                  description
+                )
+              `)
+              .eq("auth_user_id", user.id)
+              .maybeSingle();
+
+            if (newlyCreatedAdmin) {
+              rawAdminRecord = newlyCreatedAdmin;
+            }
+          }
+        }
+      } catch (err) {
+        console.error("[getCurrentAdminContext] Error auto-accepting pending invitation:", err);
+      }
+    }
+
+    if (!rawAdminRecord) {
+      console.warn(`[getCurrentAdminContext] User ${user.id} (${user.email}) is authenticated but not in admin_users table.`);
+      return null;
+    }
   }
 
   // Cast raw output to bypass empty Relationship inference in hand-crafted types

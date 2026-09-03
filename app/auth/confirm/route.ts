@@ -49,6 +49,63 @@ export async function GET(request: NextRequest) {
       const authUser = data.session?.user || data.user;
       const isPasswordReset = type === "recovery" || next.startsWith("/auth/reset-password");
 
+      // --- Admin Invitation Acceptance ---
+      if (authUser && isExplicitAdmin) {
+        try {
+          // 1. Check for application invitation token in searchParams or user_metadata
+          let appInvitationToken =
+            searchParams.get("token") || authUser.user_metadata?.admin_invitation_token;
+
+          // 2. If not present in params/metadata, lookup active pending invitation for this email
+          if (!appInvitationToken && authUser.email) {
+            const { createAdminClient } = await import("@/lib/supabase/admin");
+            const adminSupabase = createAdminClient();
+            const { data: pendingInv } = await adminSupabase
+              .from("admin_invitations")
+              .select("token")
+              .eq("email", authUser.email.toLowerCase())
+              .eq("status", "pending")
+              .gt("expires_at", new Date().toISOString())
+              .order("created_at", { ascending: false })
+              .limit(1)
+              .maybeSingle();
+
+            appInvitationToken = pendingInv?.token;
+          }
+
+          if (appInvitationToken && authUser.email) {
+            const { acceptAdminInvitation } = await import("@/services/admin-invitations-service");
+            const result = await acceptAdminInvitation({
+              token: appInvitationToken,
+              authUserId: authUser.id,
+              email: authUser.email,
+            });
+
+            if (!result.success) {
+              logger.warn("[AuthConfirm] Admin invitation acceptance failed", {
+                error: result.error,
+                email: authUser.email,
+              });
+              return NextResponse.redirect(
+                `${origin}/admin/login?error=${result.error || "invitation_failed"}`
+              );
+            }
+
+            logger.info("[AuthConfirm] Admin invitation accepted successfully", {
+              email: authUser.email,
+              adminId: result.adminId,
+            });
+
+            return NextResponse.redirect(`${origin}/admin?welcome=1`);
+          }
+        } catch (inviteErr) {
+          logger.error("[AuthConfirm] Error accepting admin invitation", {
+            error: inviteErr instanceof Error ? inviteErr.message : String(inviteErr),
+          });
+          return NextResponse.redirect(`${origin}/admin/login?error=invitation_failed`);
+        }
+      }
+
       if (authUser && !isPasswordReset && !isExplicitAdmin) {
         try {
           const customer = await syncCustomerOnOAuthLogin({

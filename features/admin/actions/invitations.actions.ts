@@ -74,11 +74,13 @@ export async function sendAdminInvitationAction(input: {
     if (error || !invitation) throw new Error(error?.message || "Failed to create invitation record");
 
     // Send invitation email via Supabase Auth (Supabase SMTP -> Gmail)
-    // The user clicks the link, lands on /auth/callback?type=admin_invite&token=...,
-    // and our callback handler then marks the invitation as accepted.
-    const redirectTo = `${process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"}/auth/callback?type=admin_invite&token=${invitation.token}`;
+    // Supabase will use the "Invite user" template: {{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=invite&next=/admin
+    const siteUrl =
+      process.env.NEXT_PUBLIC_SITE_URL ||
+      (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "https://sivvai-labs-commerce-kit.vercel.app");
+    const redirectTo = `${siteUrl}/auth/confirm?type=invite&next=/admin`;
 
-    let { error: inviteError } = await adminSupabase.auth.admin.inviteUserByEmail(
+    const { error: inviteError } = await adminSupabase.auth.admin.inviteUserByEmail(
       validated.email.toLowerCase(),
       {
         redirectTo,
@@ -89,28 +91,22 @@ export async function sendAdminInvitationAction(input: {
       }
     );
 
-    // If recipient is already a registered user in auth.users, dispatch via Supabase OTP/magic link
+    // If recipient is already a registered user in auth.users (Case B), link the application token in metadata
     if (inviteError && inviteError.message?.toLowerCase().includes("already been registered")) {
-      const { createClient: createAnonClient } = await import("@supabase/supabase-js");
-      const anonClient = createAnonClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-        { auth: { autoRefreshToken: false, persistSession: false } }
+      const { data: userList } = await adminSupabase.auth.admin.listUsers();
+      const existingUser = userList?.users.find(
+        (u) => u.email?.toLowerCase() === validated.email.toLowerCase()
       );
-      const otpRes = await anonClient.auth.signInWithOtp({
-        email: validated.email.toLowerCase(),
-        options: {
-          emailRedirectTo: redirectTo,
-          data: {
+      if (existingUser) {
+        await adminSupabase.auth.admin.updateUserById(existingUser.id, {
+          user_metadata: {
+            ...existingUser.user_metadata,
             admin_invitation_token: invitation.token,
             role_id: validated.role_id,
           },
-        },
-      });
-      inviteError = otpRes.error;
-    }
-
-    if (inviteError) {
+        });
+      }
+    } else if (inviteError) {
       // Roll back/revoke invitation if Supabase email delivery failed
       await adminSupabase
         .from("admin_invitations")
