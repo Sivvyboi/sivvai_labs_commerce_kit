@@ -10,8 +10,9 @@
 import React, { useState, useTransition } from "react";
 import { updateAdminRoleAction, deactivateAdminUserAction, reactivateAdminUserAction } from "@/features/admin/actions/users.actions";
 import { ConfirmOwnerActionModal } from "@/components/admin/ui/ConfirmOwnerActionModal";
+import { MemberPermissionsModal } from "@/components/admin/team/MemberPermissionsModal";
 import { clsx } from "clsx";
-import { UserCheck, UserX, ShieldCheck, Lock } from "lucide-react";
+import { UserCheck, UserX, ShieldCheck, Lock, Shield } from "lucide-react";
 
 interface AdminUserItem {
   id: string;
@@ -58,6 +59,7 @@ export function UsersTable({
     expectedVerificationText: "",
     action: async () => ({ success: false }),
   });
+  const [permissionsTarget, setPermissionsTarget] = useState<AdminUserItem | null>(null);
 
   const handleRoleSelect = (user: AdminUserItem, newRoleId: string) => {
     const newRole = roles.find((r) => r.id === newRoleId);
@@ -214,29 +216,44 @@ export function UsersTable({
                     {u.last_sign_in_at ? new Date(u.last_sign_in_at).toLocaleDateString() : "Never"}
                   </td>
                   <td className="px-4 py-3.5 text-right">
-                    {isSelf || isProtected ? (
-                      <span className="text-[11px] text-[var(--kit-muted-fg)] italic">
-                        {isSelf ? "Current User" : "Protected"}
-                      </span>
-                    ) : u.is_active ? (
-                      <button
-                        type="button"
-                        disabled={isPending}
-                        onClick={() => handleDeactivateClick(u)}
-                        className="rounded-lg border border-[var(--kit-danger)]/30 px-2.5 py-1 text-[11px] font-medium text-[var(--kit-danger)] hover:bg-[var(--kit-danger)]/10 transition-colors"
-                      >
-                        Deactivate
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        disabled={isPending}
-                        onClick={() => handleReactivateClick(u)}
-                        className="rounded-lg border border-[var(--kit-success)]/30 px-2.5 py-1 text-[11px] font-medium text-[var(--kit-success)] hover:bg-[var(--kit-success)]/10 transition-colors"
-                      >
-                        Reactivate
-                      </button>
-                    )}
+                    <div className="flex items-center justify-end gap-2">
+                      {/* Granular Permissions Button */}
+                      {!isProtected && u.is_active && (
+                        <button
+                          type="button"
+                          onClick={() => setPermissionsTarget(u)}
+                          aria-label={`Manage permissions for ${u.email}`}
+                          className="inline-flex items-center gap-1 rounded-[var(--kit-radius-sm)] border border-[var(--kit-border)] px-2.5 py-1 text-[11px] font-medium text-[var(--kit-fg)] hover:bg-[var(--kit-surface)] hover:text-[var(--kit-accent)] hover:border-[var(--kit-accent)]/30 transition-colors"
+                        >
+                          <Shield size={11} className="text-[var(--kit-accent)]" />
+                          Permissions
+                        </button>
+                      )}
+
+                      {isSelf || isProtected ? (
+                        <span className="text-[11px] text-[var(--kit-muted-fg)] italic">
+                          {isSelf ? "Current User" : "Protected Owner"}
+                        </span>
+                      ) : u.is_active ? (
+                        <button
+                          type="button"
+                          disabled={isPending}
+                          onClick={() => handleDeactivateClick(u)}
+                          className="rounded-lg border border-[var(--kit-danger)]/30 px-2.5 py-1 text-[11px] font-medium text-[var(--kit-danger)] hover:bg-[var(--kit-danger)]/10 transition-colors"
+                        >
+                          Deactivate
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={isPending}
+                          onClick={() => handleReactivateClick(u)}
+                          className="rounded-lg border border-[var(--kit-success)]/30 px-2.5 py-1 text-[11px] font-medium text-[var(--kit-success)] hover:bg-[var(--kit-success)]/10 transition-colors"
+                        >
+                          Reactivate
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               );
@@ -253,6 +270,19 @@ export function UsersTable({
         expectedVerificationText={modalState.expectedVerificationText}
         onConfirm={modalState.action}
       />
+
+      {permissionsTarget && (
+        <MemberPermissionsModal
+          open={Boolean(permissionsTarget)}
+          onClose={() => setPermissionsTarget(null)}
+          adminUser={{
+            id: permissionsTarget.id,
+            email: permissionsTarget.email,
+            roleName: permissionsTarget.role?.name || null,
+            isProtectedOwner: permissionsTarget.is_protected_owner,
+          }}
+        />
+      )}
     </>
   );
 }
