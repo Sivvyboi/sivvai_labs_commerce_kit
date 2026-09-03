@@ -82,6 +82,12 @@ export function InvitationsTable({ invitations }: InvitationsTableProps) {
     type: "success" | "error";
     message: string;
   } | null>(null);
+  const [existingUserPrompt, setExistingUserPrompt] = React.useState<{
+    inv: Invitation;
+    roleName: string;
+    roleId: string;
+  } | null>(null);
+  const [promoting, setPromoting] = React.useState(false);
 
   const items = React.useMemo(() => {
     return invitations.map((inv) => {
@@ -128,53 +134,46 @@ export function InvitationsTable({ invitations }: InvitationsTableProps) {
       });
     } else if (result.existingAuthUser) {
       const roleDisplayName = result.roleName || inv.roles?.name || "Admin";
-      if (
-        confirm(
-          `User ${inv.email} already has a registered account.\n\nWould you like to directly add them as ${roleDisplayName} now?`
-        )
-      ) {
-        const targetRoleId = result.role_id || inv.role_id;
-        if (!targetRoleId) {
-          setFeedback({
-            type: "error",
-            message: "Missing role identifier for direct promotion.",
-          });
-          return;
-        }
-        setResendingId(inv.id);
-        const promoteResult = await directPromoteAdminAction({
-          email: inv.email,
-          role_id: targetRoleId,
-        });
-        setResendingId(null);
-        if (promoteResult.success) {
-          setMutations((prev) => ({
-            ...prev,
-            [inv.id]: {
-              status: "accepted",
-              expires_at: inv.expires_at,
-            },
-          }));
-          setFeedback({
-            type: "success",
-            message: `User ${inv.email} was directly added to the admin team as ${promoteResult.roleName || roleDisplayName}.`,
-          });
-        } else {
-          setFeedback({
-            type: "error",
-            message: promoteResult.error || "Failed to directly add user.",
-          });
-        }
-      } else {
-        setFeedback({
-          type: "error",
-          message: "Invitation was not resent because the user already has a registered account.",
-        });
-      }
+      const targetRoleId = result.role_id || inv.role_id || "";
+      setExistingUserPrompt({
+        inv,
+        roleName: roleDisplayName,
+        roleId: targetRoleId,
+      });
     } else {
       setFeedback({
         type: "error",
         message: result.error || "Failed to resend invitation.",
+      });
+    }
+  }
+
+  async function handleConfirmDirectPromote() {
+    if (!existingUserPrompt) return;
+    setPromoting(true);
+    const { inv, roleId, roleName } = existingUserPrompt;
+    const promoteResult = await directPromoteAdminAction({
+      email: inv.email,
+      role_id: roleId,
+    });
+    setPromoting(false);
+    setExistingUserPrompt(null);
+    if (promoteResult.success) {
+      setMutations((prev) => ({
+        ...prev,
+        [inv.id]: {
+          status: "accepted",
+          expires_at: inv.expires_at,
+        },
+      }));
+      setFeedback({
+        type: "success",
+        message: `User ${inv.email} was directly added to the admin team as ${promoteResult.roleName || roleName}.`,
+      });
+    } else {
+      setFeedback({
+        type: "error",
+        message: promoteResult.error || "Failed to directly add user.",
       });
     }
   }
@@ -352,6 +351,68 @@ export function InvitationsTable({ invitations }: InvitationsTableProps) {
           </table>
         </div>
       </div>
+
+      {/* Store-themed confirmation dialog for directly adding existing users */}
+      {existingUserPrompt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm"
+            onClick={() => !promoting && setExistingUserPrompt(null)}
+          />
+          <div className="relative w-full max-w-md rounded-[var(--kit-radius-lg)] border border-[var(--kit-border)] bg-[var(--kit-surface)] p-6 shadow-xl z-10 animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-start justify-between mb-4">
+              <h3 className="text-base font-semibold text-[var(--kit-text-primary)]">
+                Directly Add Team Member
+              </h3>
+              <button
+                type="button"
+                onClick={() => setExistingUserPrompt(null)}
+                disabled={promoting}
+                aria-label="Close"
+                className="flex h-7 w-7 items-center justify-center rounded-[var(--kit-radius-md)] text-[var(--kit-text-muted)] hover:bg-[var(--kit-muted)] hover:text-[var(--kit-text-primary)] transition-colors"
+              >
+                <X size={15} />
+              </button>
+            </div>
+
+            <div className="rounded-[var(--kit-radius-md)] bg-[var(--kit-accent)]/10 border border-[var(--kit-accent)]/20 p-4 mb-5">
+              <h4 className="text-sm font-semibold text-[var(--kit-text-primary)] mb-1">
+                Existing Account Detected
+              </h4>
+              <p className="text-xs text-[var(--kit-text-secondary)] leading-relaxed">
+                <strong>{existingUserPrompt.inv.email}</strong> already has a registered account.
+              </p>
+              <p className="mt-2 text-xs font-medium text-[var(--kit-text-primary)]">
+                Do you want to directly add them as{" "}
+                <span className="text-[var(--kit-accent)] font-semibold">
+                  {existingUserPrompt.roleName}
+                </span>
+                ?
+              </p>
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setExistingUserPrompt(null)}
+                disabled={promoting}
+                className="rounded-[var(--kit-radius-md)] border border-[var(--kit-border)] px-3 py-2 text-xs font-medium text-[var(--kit-text-secondary)] hover:bg-[var(--kit-muted)] transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDirectPromote}
+                disabled={promoting}
+                className="inline-flex items-center gap-1.5 rounded-[var(--kit-radius-md)] bg-[var(--kit-accent)] px-4 py-2 text-xs font-semibold text-white hover:bg-[var(--kit-accent)]/90 transition-colors disabled:opacity-50"
+              >
+                {promoting ? <Loader2 size={13} className="animate-spin" /> : null}
+                {promoting ? "Adding..." : `Yes, Add as ${existingUserPrompt.roleName}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
