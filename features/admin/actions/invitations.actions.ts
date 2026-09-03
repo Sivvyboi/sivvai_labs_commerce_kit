@@ -77,7 +77,11 @@ export async function sendAdminInvitationAction(input: {
     // Supabase will use the "Invite user" template: {{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=invite&next=/admin
     const siteUrl =
       process.env.NEXT_PUBLIC_SITE_URL ||
-      (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "https://sivvai-labs-commerce-kit.vercel.app");
+      (process.env.VERCEL_PROJECT_PRODUCTION_URL
+        ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+        : process.env.VERCEL_URL
+        ? `https://${process.env.VERCEL_URL}`
+        : "https://sivvai-labs-commerce-kit.vercel.app");
     const redirectTo = `${siteUrl}/auth/confirm?type=invite&next=/admin`;
 
     const { error: inviteError } = await adminSupabase.auth.admin.inviteUserByEmail(
@@ -91,21 +95,25 @@ export async function sendAdminInvitationAction(input: {
       }
     );
 
-    // If recipient is already a registered user in auth.users (Case B), link the application token in metadata
+    // If recipient is already a registered user in auth.users (Case B), prompt Owner to directly add them
     if (inviteError && inviteError.message?.toLowerCase().includes("already been registered")) {
-      const { data: userList } = await adminSupabase.auth.admin.listUsers();
-      const existingUser = userList?.users.find(
-        (u) => u.email?.toLowerCase() === validated.email.toLowerCase()
-      );
-      if (existingUser) {
-        await adminSupabase.auth.admin.updateUserById(existingUser.id, {
-          user_metadata: {
-            ...existingUser.user_metadata,
-            admin_invitation_token: invitation.token,
-            role_id: validated.role_id,
-          },
-        });
-      }
+      // Remove temporary invitation record to prevent orphaned pending invite
+      await adminSupabase.from("admin_invitations").delete().eq("id", invitation.id);
+
+      const { data: roleData } = await adminSupabase
+        .from("roles")
+        .select("name")
+        .eq("id", validated.role_id)
+        .single();
+
+      return {
+        success: false,
+        existingAuthUser: true,
+        email: validated.email.toLowerCase(),
+        role_id: validated.role_id,
+        roleName: roleData?.name || "Admin",
+        error: "user_already_registered",
+      };
     } else if (inviteError) {
       // Roll back/revoke invitation if Supabase email delivery failed
       await adminSupabase
@@ -128,11 +136,183 @@ export async function sendAdminInvitationAction(input: {
 
     revalidatePath("/admin/team");
     revalidatePath("/admin/team/invitations");
-    return { success: true, invitation };
+    return { success: true, deliveryMode: "sent" as const, invitation };
   } catch (err) {
     return {
       success: false,
       error: err instanceof Error ? err.message : "Failed to send invitation",
+    };
+  }
+}
+
+/**
+ * Directly promotes an existing registered Supabase Auth user to an admin role.
+ * - Requires manage_users (Owner only)
+ * - Safe: Never touches customer cart/order/address data
+ * - Creates admin_users record (or reactivates existing)
+ * - Inserts accepted admin_invitations record for audit trail
+ * - Sets user_metadata.sivvai_admin_notification to trigger storefront banner on next visit
+ * - Logs admin_user.direct_promoted audit event
+ */
+export async function directPromoteAdminAction(input: {
+  email: string;
+  role_id: string;
+}) {
+  try {
+    const callerCtx = await requirePermission("manage_users");
+    const validated = z
+      .object({
+        email: z.string().email(),
+        role_id: z.string().uuid(),
+      })
+      .parse(input);
+
+    const adminSupabase = createAdminClient();
+
+    // 1. Fetch role
+    const { data: role, error: roleErr } = await adminSupabase
+      .from("roles")
+      .select("id, key, name")
+      .eq("id", validated.role_id)
+      .single();
+
+    if (roleErr || !role) {
+      return { success: false, error: "Invalid role selected." };
+    }
+
+    // 2. Find target user in auth.users
+    const { data: userList, error: listErr } = await adminSupabase.auth.admin.listUsers({ perPage: 1000 });
+    if (listErr) {
+      return { success: false, error: "Failed to query user accounts." };
+    }
+
+    const targetUser = userList.users.find(
+      (u) => u.email?.toLowerCase() === validated.email.toLowerCase()
+    );
+
+    if (!targetUser) {
+      return { success: false, error: "No registered user account found with this email." };
+    }
+
+    // 3. Check if already active admin
+    const { data: existingAdmin } = await adminSupabase
+      .from("admin_users")
+      .select("id, is_active, role_id")
+      .eq("auth_user_id", targetUser.id)
+      .maybeSingle();
+
+    if (existingAdmin?.is_active) {
+      return { success: false, error: "This user is already an active administrator." };
+    }
+
+    // 4. Create or update admin_users row
+    if (existingAdmin) {
+      await adminSupabase
+        .from("admin_users")
+        .update({
+          role_id: role.id,
+          is_active: true,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", existingAdmin.id);
+    } else {
+      const { error: insertAdminErr } = await adminSupabase
+        .from("admin_users")
+        .insert({
+          auth_user_id: targetUser.id,
+          role_id: role.id,
+          is_active: true,
+          is_protected_owner: false,
+        });
+      if (insertAdminErr) {
+        throw new Error(`Failed to assign admin role: ${insertAdminErr.message}`);
+      }
+    }
+
+    // 5. Clean up any pending invitations for this email and record acceptance
+    await adminSupabase
+      .from("admin_invitations")
+      .update({ status: "revoked" })
+      .eq("email", validated.email.toLowerCase())
+      .eq("status", "pending");
+
+    const token = randomBytes(32).toString("hex");
+    await adminSupabase
+      .from("admin_invitations")
+      .insert({
+        email: validated.email.toLowerCase(),
+        role_id: role.id,
+        invited_by: callerCtx.admin.id,
+        token,
+        status: "accepted",
+        accepted_at: new Date().toISOString(),
+        expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+        message: "Directly added as admin by Owner",
+      });
+
+    // 6. Set user_metadata notification flag for storefront popup
+    await adminSupabase.auth.admin.updateUserById(targetUser.id, {
+      user_metadata: {
+        ...targetUser.user_metadata,
+        sivvai_admin_notification: {
+          role: role.name,
+          promoted_at: new Date().toISOString(),
+        },
+      },
+    });
+
+    // 7. Audit log
+    await logAuditEvent({
+      action: "admin_user.direct_promoted",
+      entityType: "admin_user",
+      entityId: targetUser.id,
+      metadata: {
+        email: targetUser.email,
+        role_id: role.id,
+        role_name: role.name,
+        actor_email: callerCtx.user.email,
+      },
+    });
+
+    revalidatePath("/admin/team");
+    revalidatePath("/admin/team/members");
+    revalidatePath("/admin/team/invitations");
+
+    return {
+      success: true,
+      deliveryMode: "direct_promote" as const,
+      roleName: role.name,
+      email: validated.email.toLowerCase(),
+    };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to directly add admin user.",
+    };
+  }
+}
+
+/**
+ * Clears the storefront admin promotion notification banner flag from the caller's own user_metadata.
+ */
+export async function clearAdminPromotionNotificationAction() {
+  try {
+    const { createClient } = await import("@/lib/supabase/server");
+    const supabase = await createClient();
+    const { data: { user }, error: userErr } = await supabase.auth.getUser();
+    if (userErr || !user) return { success: false, error: "Not authenticated" };
+
+    const adminSupabase = createAdminClient();
+    const { sivvai_admin_notification: _, ...remainingMetadata } = user.user_metadata || {};
+    await adminSupabase.auth.admin.updateUserById(user.id, {
+      user_metadata: remainingMetadata,
+    });
+
+    return { success: true };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to clear notification",
     };
   }
 }
@@ -242,7 +422,14 @@ export async function resendAdminInvitationAction(invitationId: string) {
     });
 
     if (!result.success || !result.invitation) {
-      return { success: false, error: result.error || "Failed to resend invitation." };
+      return {
+        success: false,
+        error: result.error || "Failed to resend invitation.",
+        existingAuthUser: result.existingAuthUser,
+        email: result.email,
+        role_id: result.role_id,
+        roleName: result.roleName,
+      };
     }
 
     await logAuditEvent({

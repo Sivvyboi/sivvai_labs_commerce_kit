@@ -16,13 +16,27 @@ import { CurrencyProvider } from "@/components/shared/CurrencyProvider";
 import { getStoreSettings } from "@/services/store-service";
 
 import { localizationConfig } from "@/config/localization";
+import { createClient } from "@/lib/supabase/server";
+import { AdminPromotionToast } from "@/components/storefront/AdminPromotionToast";
 
 export default async function StorefrontLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const settings = await getStoreSettings().catch(() => null);
+  const [settings, supabase] = await Promise.all([
+    getStoreSettings().catch(() => null),
+    createClient(),
+  ]);
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser().catch(() => ({ data: { user: null } }));
+
+  const adminNotification = user?.user_metadata?.sivvai_admin_notification as
+    | { role: string; promoted_at: string }
+    | undefined;
+
   const currency = settings?.currency || localizationConfig.currency;
 
   return (
@@ -35,6 +49,9 @@ export default async function StorefrontLayout({
           <StorefrontFooter />
           <MobileBottomNav />
           <CartDrawer />
+          {adminNotification?.role && (
+            <AdminPromotionToast roleName={adminNotification.role} />
+          )}
         </div>
       </CartProvider>
     </CurrencyProvider>

@@ -107,3 +107,48 @@ export async function resetPasswordAction(
 
   redirect("/admin/login?message=Password updated successfully");
 }
+
+/**
+ * Initializes Google OAuth sign-in for the Admin Console.
+ * Redirects through /auth/callback?next=/admin.
+ * Does not bypass admin guards: users without an active admin_users record
+ * will be blocked at the admin layout boundary and redirected to /admin/login?error=unauthorized.
+ */
+export async function adminGoogleSignInAction(redirectTo: string = "/admin") {
+  try {
+    const supabase = await createClient();
+    const siteUrl =
+      process.env.NEXT_PUBLIC_SITE_URL ||
+      (process.env.VERCEL_PROJECT_PRODUCTION_URL
+        ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+        : process.env.VERCEL_URL
+        ? `https://${process.env.VERCEL_URL}`
+        : "https://sivvai-labs-commerce-kit.vercel.app");
+    const nextPath = redirectTo.startsWith("/admin") ? redirectTo : "/admin";
+    const callbackUrl = `${siteUrl}/auth/callback?next=${encodeURIComponent(nextPath)}`;
+
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: callbackUrl,
+      },
+    });
+
+    if (error || !data?.url) {
+      return {
+        success: false,
+        error: error?.message || "Failed to initialize Google sign-in.",
+      };
+    }
+
+    return {
+      success: true,
+      url: data.url,
+    };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to initialize Google sign-in.",
+    };
+  }
+}

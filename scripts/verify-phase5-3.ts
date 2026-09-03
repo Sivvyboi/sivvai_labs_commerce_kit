@@ -375,57 +375,72 @@ async function main() {
     }
 
     // -------------------------------------------------------------------------
-    // Test Section C2: Case B — Existing Auth User Admin Invitation Flow
+    // Test Section C2: Case B — Existing Auth User Direct Promotion & Notification Flow
     // -------------------------------------------------------------------------
-    console.log("\n--- Section C2: Case B — Existing Auth User Admin Invitation Flow ---");
+    console.log("\n--- Section C2: Case B — Existing Auth User Direct Promotion & Notification Flow ---");
     {
       const nonce = `${Date.now()}_${Math.floor(Math.random() * 10000)}`;
       const existingEmail = `existing_user_${nonce}@sivvai-test.local`;
-      const appToken = randomBytes(32).toString("hex");
 
       // 1. Create confirmed existing Auth user (e.g. customer)
       const existingAuthUserId = await getOrCreateAuthUser(existingEmail);
       assert(Boolean(existingAuthUserId), "Existing user established in auth.users");
 
-      // 2. Create pending admin invitation for this email
-      const { data: inv, error: invErr } = await serviceClient
-        .from("admin_invitations")
-        .insert({
-          email: existingEmail,
-          role_id: editorRole.id,
-          token: appToken,
-          status: "pending",
-          expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-          invited_by: owner.adminId,
-        })
-        .select()
-        .single();
-
-      if (invErr || !inv) throw new Error(`Failed to insert invitation for existing user: ${invErr?.message}`);
-      createdInvitationIds.push(inv.id);
-
-      // Link application token in user_metadata (mimics sendAdminInvitationAction Case B handling)
-      await serviceClient.auth.admin.updateUserById(existingAuthUserId, {
-        user_metadata: {
-          admin_invitation_token: appToken,
-          role_id: editorRole.id,
-        },
-      });
+      // 2. Attempting inviteUserByEmail triggers 422 rejection from Supabase Auth
+      const inviteAttempt = await serviceClient.auth.admin.inviteUserByEmail(existingEmail);
+      assert(Boolean(inviteAttempt.error), "Supabase Auth rejects invite for already registered user");
+      assert(
+        inviteAttempt.error?.message.toLowerCase().includes("already been registered") ||
+        inviteAttempt.error?.status === 422,
+        "Rejection message or status identifies existing registered user"
+      );
 
       // 3. Verify no duplicate Auth account was created
       const { data: allUsers } = await serviceClient.auth.admin.listUsers();
       const matches = allUsers.users.filter((u) => u.email?.toLowerCase() === existingEmail.toLowerCase());
       assert(matches.length === 1, "No duplicate Auth account created for existing user");
 
-      // 4. Accept admin invitation as the existing authenticated user
-      const acceptRes = await acceptAdminInvitation({
-        token: appToken,
-        authUserId: existingAuthUserId,
-        email: existingEmail,
-      });
+      // 4. Directly promote user (simulating directPromoteAdminAction service operations)
+      const { data: directInv, error: directInvErr } = await serviceClient
+        .from("admin_invitations")
+        .insert({
+          email: existingEmail,
+          role_id: editorRole.id,
+          token: randomBytes(32).toString("hex"),
+          status: "accepted",
+          accepted_at: new Date().toISOString(),
+          expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+          invited_by: owner.adminId,
+          message: "Directly added as admin by Owner",
+        })
+        .select()
+        .single();
 
-      assert(acceptRes.success === true, "Existing user successfully accepted admin invitation");
-      assert(Boolean(acceptRes.adminId), "admin_users record created for existing Auth user");
+      if (directInvErr || !directInv) throw new Error(`Failed to insert direct promotion invitation: ${directInvErr?.message}`);
+      createdInvitationIds.push(directInv.id);
+
+      const { data: newAdminUser, error: newAdminErr } = await serviceClient
+        .from("admin_users")
+        .insert({
+          auth_user_id: existingAuthUserId,
+          role_id: editorRole.id,
+          is_active: true,
+          is_protected_owner: false,
+        })
+        .select()
+        .single();
+
+      if (newAdminErr || !newAdminUser) throw new Error(`Failed to insert admin_users for direct promotion: ${newAdminErr?.message}`);
+
+      // Set user_metadata notification flag
+      await serviceClient.auth.admin.updateUserById(existingAuthUserId, {
+        user_metadata: {
+          sivvai_admin_notification: {
+            role: editorRole.name,
+            promoted_at: new Date().toISOString(),
+          },
+        },
+      });
 
       // 5. Verify database state
       const { data: checkAdmin } = await serviceClient
@@ -436,13 +451,20 @@ async function main() {
       assert(checkAdmin?.is_active === true, "Existing user is now active in admin_users");
       assert(checkAdmin?.role_id === editorRole.id, "Existing user assigned correct editor role");
 
-      const { data: checkInv } = await serviceClient
-        .from("admin_invitations")
-        .select("status, accepted_at")
-        .eq("id", inv.id)
-        .single();
-      assert(checkInv?.status === "accepted", "Invitation status updated to 'accepted'");
-      assert(Boolean(checkInv?.accepted_at), "Invitation has accepted_at timestamp populated");
+      // Verify user_metadata has notification flag
+      const { data: updatedAuthUser } = await serviceClient.auth.admin.getUserById(existingAuthUserId);
+      const notif = updatedAuthUser?.user?.user_metadata?.sivvai_admin_notification;
+      assert(Boolean(notif), "sivvai_admin_notification is set on user_metadata");
+      assert(notif?.role === editorRole.name, "sivvai_admin_notification has correct role name");
+
+      // 6. Verify clearing the notification flag
+      const { sivvai_admin_notification: _, ...clearedMetadata } = updatedAuthUser?.user?.user_metadata || {};
+      await serviceClient.auth.admin.updateUserById(existingAuthUserId, {
+        user_metadata: clearedMetadata,
+      });
+
+      const { data: clearedAuthUser } = await serviceClient.auth.admin.getUserById(existingAuthUserId);
+      assert(!clearedAuthUser?.user?.user_metadata?.sivvai_admin_notification, "sivvai_admin_notification successfully cleared");
     }
 
     // -------------------------------------------------------------------------

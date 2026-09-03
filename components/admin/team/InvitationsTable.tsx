@@ -13,6 +13,7 @@ import { clsx } from "clsx";
 import {
   revokeAdminInvitationAction,
   resendAdminInvitationAction,
+  directPromoteAdminAction,
 } from "@/features/admin/actions/invitations.actions";
 import {
   MailOpen,
@@ -29,6 +30,7 @@ import {
 interface Invitation {
   id: string;
   email: string;
+  role_id?: string;
   status: "pending" | "accepted" | "expired" | "revoked";
   expires_at: string;
   accepted_at: string | null;
@@ -124,6 +126,51 @@ export function InvitationsTable({ invitations }: InvitationsTableProps) {
         type: "success",
         message: `Invitation successfully resent to ${inv.email}. A new invite link has been emailed.`,
       });
+    } else if (result.existingAuthUser) {
+      const roleDisplayName = result.roleName || inv.roles?.name || "Admin";
+      if (
+        confirm(
+          `User ${inv.email} already has a registered account.\n\nWould you like to directly add them as ${roleDisplayName} now?`
+        )
+      ) {
+        const targetRoleId = result.role_id || inv.role_id;
+        if (!targetRoleId) {
+          setFeedback({
+            type: "error",
+            message: "Missing role identifier for direct promotion.",
+          });
+          return;
+        }
+        setResendingId(inv.id);
+        const promoteResult = await directPromoteAdminAction({
+          email: inv.email,
+          role_id: targetRoleId,
+        });
+        setResendingId(null);
+        if (promoteResult.success) {
+          setMutations((prev) => ({
+            ...prev,
+            [inv.id]: {
+              status: "accepted",
+              expires_at: inv.expires_at,
+            },
+          }));
+          setFeedback({
+            type: "success",
+            message: `User ${inv.email} was directly added to the admin team as ${promoteResult.roleName || roleDisplayName}.`,
+          });
+        } else {
+          setFeedback({
+            type: "error",
+            message: promoteResult.error || "Failed to directly add user.",
+          });
+        }
+      } else {
+        setFeedback({
+          type: "error",
+          message: "Invitation was not resent because the user already has a registered account.",
+        });
+      }
     } else {
       setFeedback({
         type: "error",

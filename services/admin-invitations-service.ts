@@ -79,6 +79,10 @@ export interface ResendAdminInvitationParams {
 export interface ResendAdminInvitationResult {
   success: boolean;
   error?: string;
+  existingAuthUser?: boolean;
+  email?: string;
+  role_id?: string;
+  roleName?: string;
   invitation?: {
     id: string;
     email: string;
@@ -232,7 +236,11 @@ export async function resendAdminInvitation(
     // Supabase will use the "Invite user" template: {{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=invite&next=/admin
     const siteUrl =
       process.env.NEXT_PUBLIC_SITE_URL ||
-      (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "https://sivvai-labs-commerce-kit.vercel.app");
+      (process.env.VERCEL_PROJECT_PRODUCTION_URL
+        ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+        : process.env.VERCEL_URL
+        ? `https://${process.env.VERCEL_URL}`
+        : "https://sivvai-labs-commerce-kit.vercel.app");
     const redirectTo = `${siteUrl}/auth/confirm?type=invite&next=/admin`;
 
     const { error: inviteError } = await adminSupabase.auth.admin.inviteUserByEmail(
@@ -246,21 +254,22 @@ export async function resendAdminInvitation(
       }
     );
 
-    // If recipient is already a registered user in auth.users (Case B), link the refreshed application token in metadata
+    // If recipient is already a registered user in auth.users (Case B), return typed indication
     if (inviteError && inviteError.message?.toLowerCase().includes("already been registered")) {
-      const { data: userList } = await adminSupabase.auth.admin.listUsers();
-      const existingUser = userList?.users.find(
-        (u) => u.email?.toLowerCase() === target.email.toLowerCase()
-      );
-      if (existingUser) {
-        await adminSupabase.auth.admin.updateUserById(existingUser.id, {
-          user_metadata: {
-            ...existingUser.user_metadata,
-            admin_invitation_token: newToken,
-            role_id: target.role_id,
-          },
-        });
-      }
+      const { data: roleData } = await adminSupabase
+        .from("roles")
+        .select("name")
+        .eq("id", target.role_id)
+        .single();
+
+      return {
+        success: false,
+        existingAuthUser: true,
+        email: target.email,
+        role_id: target.role_id,
+        roleName: roleData?.name || "Admin",
+        error: "This user already has a registered account. Please directly add them as an administrator.",
+      };
     } else if (inviteError) {
       return {
         success: false,
