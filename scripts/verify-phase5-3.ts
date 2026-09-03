@@ -458,13 +458,19 @@ async function main() {
       assert(notif?.role === editorRole.name, "sivvai_admin_notification has correct role name");
 
       // 6. Verify clearing the notification flag
-      const { sivvai_admin_notification: _, ...clearedMetadata } = updatedAuthUser?.user?.user_metadata || {};
       await serviceClient.auth.admin.updateUserById(existingAuthUserId, {
-        user_metadata: clearedMetadata,
+        user_metadata: {
+          ...(updatedAuthUser?.user?.user_metadata || {}),
+          sivvai_admin_notification: null,
+        },
       });
 
       const { data: clearedAuthUser } = await serviceClient.auth.admin.getUserById(existingAuthUserId);
-      assert(!clearedAuthUser?.user?.user_metadata?.sivvai_admin_notification, "sivvai_admin_notification successfully cleared");
+      assert(
+        !clearedAuthUser?.user?.user_metadata?.sivvai_admin_notification ||
+        !clearedAuthUser?.user?.user_metadata?.sivvai_admin_notification?.role,
+        "sivvai_admin_notification successfully cleared"
+      );
     }
 
     // -------------------------------------------------------------------------

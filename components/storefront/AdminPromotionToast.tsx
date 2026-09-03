@@ -14,17 +14,37 @@ import { clearAdminPromotionNotificationAction } from "@/features/admin/actions/
 
 interface AdminPromotionToastProps {
   roleName: string;
+  promotedAt?: string;
 }
 
-export function AdminPromotionToast({ roleName }: AdminPromotionToastProps) {
+export function AdminPromotionToast({ roleName, promotedAt }: AdminPromotionToastProps) {
   const router = useRouter();
+  const storageKey = `sivvai_dismissed_admin_${roleName}_${promotedAt || "default"}`;
   const [visible, setVisible] = React.useState(true);
   const [dismissing, setDismissing] = React.useState(false);
+
+  const isDismissedInSession = React.useSyncExternalStore(
+    () => () => {},
+    () => {
+      try {
+        return sessionStorage.getItem(storageKey) === "1";
+      } catch {
+        return false;
+      }
+    },
+    () => false
+  );
 
   async function handleDismiss() {
     setVisible(false);
     try {
+      sessionStorage.setItem(storageKey, "1");
+    } catch {
+      // Ignore storage errors
+    }
+    try {
       await clearAdminPromotionNotificationAction();
+      router.refresh();
     } catch {
       // Non-fatal
     }
@@ -33,6 +53,11 @@ export function AdminPromotionToast({ roleName }: AdminPromotionToastProps) {
   async function handleVisitDashboard() {
     setDismissing(true);
     try {
+      sessionStorage.setItem(storageKey, "1");
+    } catch {
+      // Ignore storage errors
+    }
+    try {
       await clearAdminPromotionNotificationAction();
     } catch {
       // Non-fatal
@@ -40,7 +65,7 @@ export function AdminPromotionToast({ roleName }: AdminPromotionToastProps) {
     router.push("/admin");
   }
 
-  if (!visible) return null;
+  if (!visible || isDismissedInSession) return null;
 
   return (
     <aside

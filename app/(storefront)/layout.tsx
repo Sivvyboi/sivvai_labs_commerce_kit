@@ -50,7 +50,10 @@ export default async function StorefrontLayout({
           <MobileBottomNav />
           <CartDrawer />
           {adminNotification?.role && (
-            <AdminPromotionToast roleName={adminNotification.role} />
+            <AdminPromotionToast
+              roleName={adminNotification.role}
+              promotedAt={adminNotification.promoted_at}
+            />
           )}
         </div>
       </CartProvider>

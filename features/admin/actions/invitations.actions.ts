@@ -303,9 +303,11 @@ export async function clearAdminPromotionNotificationAction() {
     if (userErr || !user) return { success: false, error: "Not authenticated" };
 
     const adminSupabase = createAdminClient();
-    const { sivvai_admin_notification: _, ...remainingMetadata } = user.user_metadata || {};
     await adminSupabase.auth.admin.updateUserById(user.id, {
-      user_metadata: remainingMetadata,
+      user_metadata: {
+        ...(user.user_metadata || {}),
+        sivvai_admin_notification: null,
+      },
     });
 
     return { success: true };

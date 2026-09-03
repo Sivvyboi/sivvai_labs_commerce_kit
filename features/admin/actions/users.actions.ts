@@ -233,6 +233,20 @@ export async function updateAdminRoleAction(params: {
 
     if (updateErr) throw new Error(updateErr.message);
 
+    // 7b. Set notification flag so user sees storefront popup about new role
+    const { data: authUserObj } = await adminSupabase.auth.admin.getUserById(targetAdmin.auth_user_id);
+    if (authUserObj?.user) {
+      await adminSupabase.auth.admin.updateUserById(targetAdmin.auth_user_id, {
+        user_metadata: {
+          ...(authUserObj.user.user_metadata || {}),
+          sivvai_admin_notification: {
+            role: newRole.name,
+            promoted_at: new Date().toISOString(),
+          },
+        },
+      });
+    }
+
     // 8. Log detailed audit event
     await logAuditEvent({
       action: "admin_user.role_update",
