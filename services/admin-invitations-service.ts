@@ -89,7 +89,6 @@ export interface ResendAdminInvitationResult {
     created_at: string;
     roles?: { key: string; name: string } | null;
   };
-  notificationId?: string;
 }
 
 /**
@@ -98,8 +97,7 @@ export interface ResendAdminInvitationResult {
  * - Sets a fresh 7-day expiration date
  * - Updates status to 'pending' (restores expired invitations to active pending)
  * - Revokes any other competing pending invitations for the same email
- * - Dispatches a fresh invitation notification email using the existing email provider
- * - Re-registers invitation with Supabase Auth
+ * - Delivers fresh invitation email via Supabase Auth (Supabase SMTP -> Gmail)
  */
 export async function resendAdminInvitation(
   params: ResendAdminInvitationParams
@@ -110,7 +108,6 @@ export async function resendAdminInvitation(
     }
 
     const { randomBytes } = await import("crypto");
-    const notificationService = await import("@/services/notification-service");
     const adminSupabase = createAdminClient();
 
     // 1. Fetch target invitation
@@ -231,36 +228,51 @@ export async function resendAdminInvitation(
 
     const updated = updatedRaw as unknown as ResendAdminInvitationResult["invitation"];
 
-    // 7. Dispatch fresh invitation email via existing notification service
-    const roleName = target.roles?.name || "Team Member";
-    const notification = await notificationService.sendAdminInvitationNotification({
-      email: target.email.toLowerCase(),
-      roleName,
-      token: newToken,
-      message: target.message,
-      inviterEmail: params.callerEmail,
-    });
+    // 7. Deliver fresh invitation email via Supabase Auth (Supabase SMTP -> Gmail)
+    const redirectTo = `${process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"}/auth/callback?type=admin_invite&token=${newToken}`;
 
-    // 8. Re-register invitation with Supabase Auth
-    try {
-      await adminSupabase.auth.admin.inviteUserByEmail(
-        target.email.toLowerCase(),
-        {
-          redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"}/auth/callback?type=admin_invite&token=${newToken}`,
+    let { error: inviteError } = await adminSupabase.auth.admin.inviteUserByEmail(
+      target.email.toLowerCase(),
+      {
+        redirectTo,
+        data: {
+          admin_invitation_token: newToken,
+          role_id: target.role_id,
+        },
+      }
+    );
+
+    // If the email belongs to an existing registered user in auth.users, dispatch via Supabase OTP/magic link
+    if (inviteError && inviteError.message?.toLowerCase().includes("already been registered")) {
+      const { createClient } = await import("@supabase/supabase-js");
+      const anonClient = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        { auth: { autoRefreshToken: false, persistSession: false } }
+      );
+      const otpRes = await anonClient.auth.signInWithOtp({
+        email: target.email.toLowerCase(),
+        options: {
+          emailRedirectTo: redirectTo,
           data: {
             admin_invitation_token: newToken,
             role_id: target.role_id,
           },
-        }
-      );
-    } catch (authInviteErr) {
-      console.warn("[resendAdminInvitation] Supabase auth invite notice:", authInviteErr);
+        },
+      });
+      inviteError = otpRes.error;
+    }
+
+    if (inviteError) {
+      return {
+        success: false,
+        error: `Failed to deliver invitation email: ${inviteError.message}`,
+      };
     }
 
     return {
       success: true,
       invitation: updated,
-      notificationId: notification.id,
     };
   } catch (err) {
     console.error("[resendAdminInvitation] Unexpected error:", err);

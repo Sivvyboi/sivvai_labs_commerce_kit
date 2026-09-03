@@ -12,7 +12,6 @@ import { randomBytes } from "crypto";
 import { requirePermission } from "@/lib/auth/admin-guard";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logAuditEvent } from "@/services/authz-service";
-import * as notificationService from "@/services/notification-service";
 import { z } from "zod";
 
 const SendInvitationSchema = z.object({
@@ -72,33 +71,17 @@ export async function sendAdminInvitationAction(input: {
       .select()
       .single();
 
-    if (error) throw new Error(error.message);
+    if (error || !invitation) throw new Error(error?.message || "Failed to create invitation record");
 
-    // Fetch role name for branded email template
-    const { data: roleData } = await adminSupabase
-      .from("roles")
-      .select("name, key")
-      .eq("id", validated.role_id)
-      .maybeSingle();
+    // Send invitation email via Supabase Auth (Supabase SMTP -> Gmail)
+    // The user clicks the link, lands on /auth/callback?type=admin_invite&token=...,
+    // and our callback handler then marks the invitation as accepted.
+    const redirectTo = `${process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"}/auth/callback?type=admin_invite&token=${invitation.token}`;
 
-    const roleName = roleData?.name || "Team Member";
-
-    // 1. Send branded transactional invitation email through notification service
-    // (creates notification_logs record, tracks delivery, and enforces idempotency)
-    const notification = await notificationService.sendAdminInvitationNotification({
-      email: validated.email.toLowerCase(),
-      roleName,
-      token: invitation.token,
-      invitationId: invitation.id,
-      message: validated.message,
-      inviterEmail: callerCtx.user.email,
-    });
-
-    // 2. Also register invitation with Supabase Auth to enable auth credentials/magic link
-    const { error: inviteError } = await adminSupabase.auth.admin.inviteUserByEmail(
+    let { error: inviteError } = await adminSupabase.auth.admin.inviteUserByEmail(
       validated.email.toLowerCase(),
       {
-        redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback?type=admin_invite&token=${invitation.token}`,
+        redirectTo,
         data: {
           admin_invitation_token: invitation.token,
           role_id: validated.role_id,
@@ -106,15 +89,34 @@ export async function sendAdminInvitationAction(input: {
       }
     );
 
+    // If recipient is already a registered user in auth.users, dispatch via Supabase OTP/magic link
+    if (inviteError && inviteError.message?.toLowerCase().includes("already been registered")) {
+      const { createClient: createAnonClient } = await import("@supabase/supabase-js");
+      const anonClient = createAnonClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        { auth: { autoRefreshToken: false, persistSession: false } }
+      );
+      const otpRes = await anonClient.auth.signInWithOtp({
+        email: validated.email.toLowerCase(),
+        options: {
+          emailRedirectTo: redirectTo,
+          data: {
+            admin_invitation_token: invitation.token,
+            role_id: validated.role_id,
+          },
+        },
+      });
+      inviteError = otpRes.error;
+    }
+
     if (inviteError) {
-      // If Supabase Auth fails and notification failed, rollback invitation
-      if (notification.status === "failed") {
-        await adminSupabase
-          .from("admin_invitations")
-          .update({ status: "revoked" })
-          .eq("id", invitation.id);
-        throw new Error(`Failed to send invitation: ${inviteError.message}`);
-      }
+      // Roll back/revoke invitation if Supabase email delivery failed
+      await adminSupabase
+        .from("admin_invitations")
+        .update({ status: "revoked" })
+        .eq("id", invitation.id);
+      throw new Error(`Failed to send invitation email: ${inviteError.message}`);
     }
 
     await logAuditEvent({
@@ -125,13 +127,12 @@ export async function sendAdminInvitationAction(input: {
         email: validated.email,
         role_id: validated.role_id,
         actor_email: callerCtx.user.email,
-        notification_id: notification.id,
       },
     });
 
     revalidatePath("/admin/team");
     revalidatePath("/admin/team/invitations");
-    return { success: true, invitation, notificationId: notification.id };
+    return { success: true, invitation };
   } catch (err) {
     return {
       success: false,
@@ -256,7 +257,6 @@ export async function resendAdminInvitationAction(invitationId: string) {
         email: result.invitation.email,
         role_id: result.invitation.role_id,
         actor_email: callerCtx.user.email,
-        notification_id: result.notificationId,
       },
     });
 
