@@ -210,8 +210,68 @@ export async function revokeAdminInvitationAction(invitationId: string) {
     };
   }
 }
-import { acceptAdminInvitation as acceptInvitationService, type AcceptAdminInvitationParams } from "@/services/admin-invitations-service";
+
+import {
+  acceptAdminInvitation as acceptInvitationService,
+  resendAdminInvitation as resendInvitationService,
+  type AcceptAdminInvitationParams,
+} from "@/services/admin-invitations-service";
 
 export async function acceptAdminInvitationAction(params: AcceptAdminInvitationParams) {
   return acceptInvitationService(params);
 }
+
+/**
+ * Resends an existing admin invitation:
+ * - Requires manage_users (Owner-only guard)
+ * - Refreshes token and expiration date
+ * - Restores expired or pending invitation to active pending
+ * - Invalidates old token
+ * - Dispatches fresh invitation email
+ * - Emits admin_invitation.resent audit event without exposing token
+ */
+export async function resendAdminInvitationAction(invitationId: string) {
+  try {
+    const callerCtx = await requirePermission("manage_users");
+
+    if (!invitationId || typeof invitationId !== "string") {
+      return { success: false, error: "Invalid invitation ID." };
+    }
+
+    const result = await resendInvitationService({
+      invitationId,
+      callerAdminId: callerCtx.admin.id,
+      callerEmail: callerCtx.user.email,
+    });
+
+    if (!result.success || !result.invitation) {
+      return { success: false, error: result.error || "Failed to resend invitation." };
+    }
+
+    await logAuditEvent({
+      action: "admin_invitation.resent",
+      entityType: "admin_invitation",
+      entityId: invitationId,
+      metadata: {
+        email: result.invitation.email,
+        role_id: result.invitation.role_id,
+        actor_email: callerCtx.user.email,
+        notification_id: result.notificationId,
+      },
+    });
+
+    revalidatePath("/admin/team");
+    revalidatePath("/admin/team/invitations");
+
+    return {
+      success: true,
+      invitation: result.invitation,
+    };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to resend invitation.",
+    };
+  }
+}
+
