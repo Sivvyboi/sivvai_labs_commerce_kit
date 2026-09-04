@@ -92,8 +92,11 @@ export async function createOrder(
   };
 }
 
-export async function findOrderById(id: string): Promise<OrderWithLines | null> {
-  const supabase = await createClient();
+export async function findOrderById(
+  id: string,
+  options?: { useAdmin?: boolean }
+): Promise<OrderWithLines | null> {
+  const supabase = options?.useAdmin ? createAdminClient() : await createClient();
   const { data, error } = await supabase
     .from("orders")
     .select("*, lines:order_lines(*), customer:customers(*), payment_attempts(*), status_events:order_status_events(*), notes:order_notes(*)")
@@ -104,8 +107,11 @@ export async function findOrderById(id: string): Promise<OrderWithLines | null> 
   return (data as unknown) as OrderWithLines;
 }
 
-export async function findOrderByNumber(orderNumber: string): Promise<OrderWithLines | null> {
-  const supabase = await createClient();
+export async function findOrderByNumber(
+  orderNumber: string,
+  options?: { useAdmin?: boolean }
+): Promise<OrderWithLines | null> {
+  const supabase = options?.useAdmin ? createAdminClient() : await createClient();
   const { data, error } = await supabase
     .from("orders")
     .select("*, lines:order_lines(*), customer:customers(*), payment_attempts(*), status_events:order_status_events(*), notes:order_notes(*)")
@@ -118,9 +124,10 @@ export async function findOrderByNumber(orderNumber: string): Promise<OrderWithL
 
 export async function findOrderByNumberAndEmail(
   orderNumber: string,
-  email: string
+  email: string,
+  options?: { useAdmin?: boolean }
 ): Promise<OrderWithLines | null> {
-  const order = await findOrderByNumber(orderNumber);
+  const order = await findOrderByNumber(orderNumber, options);
   if (!order) return null;
 
   const targetEmail = email.trim().toLowerCase();

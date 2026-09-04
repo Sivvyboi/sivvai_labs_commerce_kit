@@ -11,9 +11,39 @@ import type { Json } from "@/types";
 
 export async function initiateCheckout(input: InitiateCheckoutInput) {
   // 1. Get and validate cart
-  const cart = await cartService.getCart(input.cartId);
+  const cart = await cartService.getCart(input.cartId, { useAdmin: true });
   if (!cart.items || cart.items.length === 0) {
     throw new ValidationError("Cannot initiate checkout with an empty cart");
+  }
+
+  // 1-A. Authoritatively validate every cart line before proceeding
+  for (const item of cart.items) {
+    if (item.is_stale) {
+      throw new ValidationError(
+        item.stale_reason ||
+          "One or more items in your cart are no longer available. Please update your cart before proceeding."
+      );
+    }
+
+    if (!item.variant_id) {
+      throw new ValidationError("Cart item is missing variant identity");
+    }
+
+    if (item.quantity <= 0) {
+      throw new ValidationError("Cart item quantity must be greater than zero");
+    }
+
+    const v = item.variant;
+    if (!v || v.status !== "active" || v.archived_at !== null) {
+      throw new ValidationError(
+        `Variant ${v?.sku || item.variant_id} is no longer available`
+      );
+    }
+
+    const p = v.product;
+    if (!p || p.status !== "published" || p.archived_at !== null) {
+      throw new ValidationError(`Product ${p?.name || "in cart"} is no longer available`);
+    }
   }
 
   // 2. Find or create customer

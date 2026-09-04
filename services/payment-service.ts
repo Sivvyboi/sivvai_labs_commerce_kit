@@ -137,7 +137,7 @@ export async function initiatePayment(params: InitiatePaymentParams) {
   let itemSummary = "";
   let itemCount = 0;
   try {
-    const cart = await cartService.getCart(session.cart_id);
+    const cart = await cartService.getCart(session.cart_id, { useAdmin: true });
     const lineItems = (cart.items ?? []).flatMap((line) => {
       const productName = line.variant?.product?.name;
       if (!productName) return [];

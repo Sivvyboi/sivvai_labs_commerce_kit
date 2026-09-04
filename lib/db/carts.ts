@@ -1,7 +1,9 @@
 import "server-only";
 import { createClient } from "../supabase/server";
+import { createAdminClient } from "../supabase/admin";
 import { getCartTokenHash } from "../auth/cart-token";
-import { NotFoundError } from "../errors";
+import { NotFoundError, ValidationError, InsufficientStockError } from "../errors";
+import { resolveVariantPrice } from "../variants/pricing";
 import type { Database } from "@/types";
 import type { ProductRow, ProductVariantRow, ProductImageRow } from "./products";
 
@@ -16,12 +18,23 @@ export type CartWithLines = CartRow & {
   items: CartLineWithVariant[];
 };
 
+export interface CartQueryOptions {
+  tokenHash?: string;
+  useAdmin?: boolean;
+}
+
 /**
  * Finds a cart by ID.
  * Governed by RLS policy: "Allow users to select own carts" on `carts`.
  */
-export async function findCartById(id: string, tokenHash?: string): Promise<CartWithLines | null> {
-  const supabase = await createClient(tokenHash ? { cartTokenHash: tokenHash } : undefined);
+export async function findCartById(
+  id: string,
+  tokenHash?: string,
+  options?: { useAdmin?: boolean }
+): Promise<CartWithLines | null> {
+  const supabase = options?.useAdmin
+    ? createAdminClient()
+    : await createClient(tokenHash ? { cartTokenHash: tokenHash } : undefined);
   const { data, error } = await supabase
     .from("carts")
     .select("*, items:cart_lines(*, variant:product_variants(*, product:products(*, images:product_images(*))))")
@@ -36,8 +49,13 @@ export async function findCartById(id: string, tokenHash?: string): Promise<Cart
  * Finds the latest active cart for a given customer ID.
  * Governed by RLS policy: "Allow users to select own carts" on `carts`.
  */
-export async function findCartByCustomerId(customerId: string): Promise<CartWithLines | null> {
-  const supabase = await createClient();
+export async function findCartByCustomerId(
+  customerId: string,
+  options?: CartQueryOptions
+): Promise<CartWithLines | null> {
+  const supabase = options?.useAdmin
+    ? createAdminClient()
+    : await createClient(options?.tokenHash ? { cartTokenHash: options.tokenHash } : undefined);
   const { data, error } = await supabase
     .from("carts")
     .select("*, items:cart_lines(*, variant:product_variants(*, product:products(*, images:product_images(*))))")
@@ -77,13 +95,18 @@ export async function findCartByTokenHash(tokenHash: string): Promise<CartWithLi
  * Otherwise, populates cart_token_hash from the server-managed guest cart_token cookie.
  * Governed by RLS policy: "Allow users to insert own carts" on `carts`.
  */
-export async function createCart(customerId?: string): Promise<CartRow> {
-  let cartTokenHash: string | null = null;
-  if (!customerId) {
+export async function createCart(
+  customerId?: string,
+  options?: CartQueryOptions
+): Promise<CartRow> {
+  let cartTokenHash: string | null = options?.tokenHash ?? null;
+  if (!customerId && !cartTokenHash) {
     cartTokenHash = await getCartTokenHash();
   }
 
-  const supabase = await createClient(cartTokenHash ? { cartTokenHash } : undefined);
+  const supabase = options?.useAdmin
+    ? createAdminClient()
+    : await createClient(cartTokenHash ? { cartTokenHash } : undefined);
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
   const { data, error } = await supabase
@@ -142,21 +165,35 @@ export async function updateCartTokenHash(cartId: string, tokenHash: string): Pr
 
 /**
  * Adds an item to a cart or increments quantity if item already exists.
- * Price snapshot is calculated server-side from product_variants / products.
+ * Price snapshot is calculated server-side from canonical variant/product pricing resolver.
+ * Stock availability and active status are authoritatively verified at this DB boundary.
  * Governed by RLS policy: "Allow users to manage own cart lines" on `cart_lines`.
  */
-export async function addCartItem(params: {
-  cartId: string;
-  variantId: string;
-  quantity: number;
-  unitPriceSnapshot?: number;
-}): Promise<CartLineRow> {
-  const supabase = await createClient();
+export async function addCartItem(
+  params: {
+    cartId: string;
+    variantId: string;
+    quantity: number;
+    unitPriceSnapshot?: number; // Ignored for security; server computes canonical price
+  },
+  options?: CartQueryOptions
+): Promise<CartLineRow> {
+  const supabase = options?.useAdmin
+    ? createAdminClient()
+    : await createClient(options?.tokenHash ? { cartTokenHash: options.tokenHash } : undefined);
 
-  // Fetch authoritative unit price from product variant / product
+  if (params.quantity <= 0) {
+    throw new ValidationError("Quantity must be greater than zero");
+  }
+
+  // 1. Fetch variant with product and companion inventory record
   const { data: rawVariant, error: varErr } = await supabase
     .from("product_variants")
-    .select("price_override, product:products(base_price)")
+    .select(`
+      id, product_id, sku, status, archived_at, price_override,
+      product:products(id, name, status, archived_at, base_price, sale_price),
+      inventory:inventory_records(id, on_hand_quantity, reserved_quantity, track_inventory, allow_backorders)
+    `)
     .eq("id", params.variantId)
     .single();
 
@@ -165,14 +202,55 @@ export async function addCartItem(params: {
   }
 
   const variant = rawVariant as unknown as {
+    id: string;
+    product_id: string;
+    sku: string | null;
+    status: string;
+    archived_at: string | null;
     price_override: number | null;
-    product: { base_price: number } | null;
+    product: {
+      id: string;
+      name: string;
+      status: string;
+      archived_at: string | null;
+      base_price: number;
+      sale_price: number | null;
+    } | null;
+    inventory: {
+      id: string;
+      on_hand_quantity: number;
+      reserved_quantity: number;
+      track_inventory: boolean;
+      allow_backorders: boolean;
+    } | Array<{
+      id: string;
+      on_hand_quantity: number;
+      reserved_quantity: number;
+      track_inventory: boolean;
+      allow_backorders: boolean;
+    }> | null;
   };
 
-  const basePrice = variant.product?.base_price ?? 0;
-  const unitPrice = variant.price_override ?? basePrice ?? params.unitPriceSnapshot ?? 0;
+  // 2. Validate variant active and not archived
+  if (variant.status !== "active" || variant.archived_at !== null) {
+    throw new ValidationError(
+      `Variant ${variant.sku || params.variantId} is no longer active or has been archived`
+    );
+  }
 
-  // Check if item already exists in cart
+  // 3. Validate product published and not archived
+  if (
+    !variant.product ||
+    variant.product.status !== "published" ||
+    variant.product.archived_at !== null
+  ) {
+    throw new ValidationError("Product is no longer available");
+  }
+
+  // 4. Resolve canonical price (minor units / kobo)
+  const unitPrice = resolveVariantPrice(variant.product, variant);
+
+  // 5. Check existing item in cart
   const { data: existing } = await supabase
     .from("cart_lines")
     .select("*")
@@ -180,10 +258,29 @@ export async function addCartItem(params: {
     .eq("variant_id", params.variantId)
     .maybeSingle();
 
+  const totalRequestedQuantity = (existing?.quantity ?? 0) + params.quantity;
+
+  // 6. Authoritative inventory verification
+  const inv = Array.isArray(variant.inventory) ? variant.inventory[0] : variant.inventory;
+  if (!inv) {
+    throw new InsufficientStockError(params.variantId, totalRequestedQuantity, 0);
+  }
+
+  if (inv.track_inventory && !inv.allow_backorders) {
+    const availableStock = Math.max(0, (inv.on_hand_quantity ?? 0) - (inv.reserved_quantity ?? 0));
+    if (availableStock < totalRequestedQuantity) {
+      throw new InsufficientStockError(params.variantId, totalRequestedQuantity, availableStock);
+    }
+  }
+
+  // 7. Update existing or insert new cart line
   if (existing) {
     const { data: updated, error } = await supabase
       .from("cart_lines")
-      .update({ quantity: existing.quantity + params.quantity, unit_price_snapshot: unitPrice })
+      .update({
+        quantity: totalRequestedQuantity,
+        unit_price_snapshot: unitPrice,
+      })
       .eq("id", existing.id)
       .select()
       .single();
@@ -209,20 +306,103 @@ export async function addCartItem(params: {
 
 /**
  * Updates quantity of a cart line item.
+ * Authoritatively validates variant status, product status, and inventory limits.
  * Governed by RLS policy: "Allow users to manage own cart lines" on `cart_lines`.
  */
 export async function updateCartItemQuantity(
   cartLineId: string,
-  quantity: number
+  quantity: number,
+  options?: CartQueryOptions
 ): Promise<CartLineRow | { success: boolean }> {
   if (quantity <= 0) {
-    return removeCartItem(cartLineId);
+    return removeCartItem(cartLineId, options);
   }
 
-  const supabase = await createClient();
+  const supabase = options?.useAdmin
+    ? createAdminClient()
+    : await createClient(options?.tokenHash ? { cartTokenHash: options.tokenHash } : undefined);
+
+  // Fetch cart line with variant and inventory
+  const { data: rawLine, error: lineErr } = await supabase
+    .from("cart_lines")
+    .select(`
+      id, cart_id, variant_id,
+      variant:product_variants(
+        id, sku, status, archived_at, price_override,
+        product:products(id, status, archived_at, base_price, sale_price),
+        inventory:inventory_records(id, on_hand_quantity, reserved_quantity, track_inventory, allow_backorders)
+      )
+    `)
+    .eq("id", cartLineId)
+    .single();
+
+  if (lineErr || !rawLine || !rawLine.variant) {
+    throw new NotFoundError("CartLine", cartLineId);
+  }
+
+  const variant = rawLine.variant as unknown as {
+    id: string;
+    sku: string | null;
+    status: string;
+    archived_at: string | null;
+    price_override: number | null;
+    product: {
+      id: string;
+      status: string;
+      archived_at: string | null;
+      base_price: number;
+      sale_price: number | null;
+    } | null;
+    inventory: {
+      id: string;
+      on_hand_quantity: number;
+      reserved_quantity: number;
+      track_inventory: boolean;
+      allow_backorders: boolean;
+    } | Array<{
+      id: string;
+      on_hand_quantity: number;
+      reserved_quantity: number;
+      track_inventory: boolean;
+      allow_backorders: boolean;
+    }> | null;
+  };
+
+  // Validate variant is active and not archived
+  if (variant.status !== "active" || variant.archived_at !== null) {
+    throw new ValidationError(
+      `Variant ${variant.sku || rawLine.variant_id} is no longer active or has been archived`
+    );
+  }
+
+  // Validate product is published and not archived
+  if (
+    !variant.product ||
+    variant.product.status !== "published" ||
+    variant.product.archived_at !== null
+  ) {
+    throw new ValidationError("Product is no longer available");
+  }
+
+  // Authoritative stock check
+  const inv = Array.isArray(variant.inventory) ? variant.inventory[0] : variant.inventory;
+  if (!inv) {
+    throw new InsufficientStockError(rawLine.variant_id, quantity, 0);
+  }
+
+  if (inv.track_inventory && !inv.allow_backorders) {
+    const availableStock = Math.max(0, (inv.on_hand_quantity ?? 0) - (inv.reserved_quantity ?? 0));
+    if (availableStock < quantity) {
+      throw new InsufficientStockError(rawLine.variant_id, quantity, availableStock);
+    }
+  }
+
+  // Re-resolve canonical price on quantity update so snapshot is up-to-date
+  const unitPrice = resolveVariantPrice(variant.product, variant);
+
   const { data, error } = await supabase
     .from("cart_lines")
-    .update({ quantity })
+    .update({ quantity, unit_price_snapshot: unitPrice })
     .eq("id", cartLineId)
     .select()
     .single();
@@ -235,8 +415,13 @@ export async function updateCartItemQuantity(
  * Removes a cart line item.
  * Governed by RLS policy: "Allow users to manage own cart lines" on `cart_lines`.
  */
-export async function removeCartItem(cartLineId: string): Promise<{ success: boolean }> {
-  const supabase = await createClient();
+export async function removeCartItem(
+  cartLineId: string,
+  options?: CartQueryOptions
+): Promise<{ success: boolean }> {
+  const supabase = options?.useAdmin
+    ? createAdminClient()
+    : await createClient(options?.tokenHash ? { cartTokenHash: options.tokenHash } : undefined);
   const { error } = await supabase
     .from("cart_lines")
     .delete()
@@ -250,8 +435,13 @@ export async function removeCartItem(cartLineId: string): Promise<{ success: boo
  * Clears all items from a cart.
  * Governed by RLS policy: "Allow users to manage own cart lines" on `cart_lines`.
  */
-export async function clearCart(cartId: string): Promise<{ success: boolean }> {
-  const supabase = await createClient();
+export async function clearCart(
+  cartId: string,
+  options?: CartQueryOptions
+): Promise<{ success: boolean }> {
+  const supabase = options?.useAdmin
+    ? createAdminClient()
+    : await createClient(options?.tokenHash ? { cartTokenHash: options.tokenHash } : undefined);
   const { error } = await supabase
     .from("cart_lines")
     .delete()

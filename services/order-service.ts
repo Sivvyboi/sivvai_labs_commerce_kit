@@ -63,8 +63,11 @@ export async function createOrderFromCheckout(
 }
 
 
-export async function getOrderDetails(orderId: string) {
-  const order = await orderRepo.findOrderById(orderId);
+export async function getOrderDetails(
+  orderId: string,
+  options?: { useAdmin?: boolean }
+) {
+  const order = await orderRepo.findOrderById(orderId, options);
   if (!order) {
     throw new NotFoundError("Order", orderId);
   }
@@ -75,8 +78,12 @@ export async function getCustomerOrders(customerId: string) {
   return orderRepo.findCustomerOrders(customerId);
 }
 
-export async function lookupGuestOrder(orderNumber: string, email: string) {
-  const order = await orderRepo.findOrderByNumberAndEmail(orderNumber, email);
+export async function lookupGuestOrder(
+  orderNumber: string,
+  email: string,
+  options?: { useAdmin?: boolean }
+) {
+  const order = await orderRepo.findOrderByNumberAndEmail(orderNumber, email, options);
   if (!order) {
     throw new NotFoundError("Order", `${orderNumber} for email ${email}`);
   }
@@ -90,9 +97,10 @@ export interface ReorderResult {
 
 export async function reorderItemsFromOrder(
   orderId: string,
-  cartId: string
+  cartId: string,
+  options?: { useAdmin?: boolean }
 ): Promise<ReorderResult> {
-  const order = await getOrderDetails(orderId);
+  const order = await getOrderDetails(orderId, options);
   const skippedItems: Array<{ productName: string; reason: string }> = [];
   let addedCount = 0;
 
@@ -108,12 +116,15 @@ export async function reorderItemsFromOrder(
     try {
       // Verify inventory availability before adding
       await inventoryService.verifyStockAvailability(line.variant_id, line.quantity);
-      await cartRepo.addCartItem({
-        cartId,
-        variantId: line.variant_id,
-        quantity: line.quantity,
-        unitPriceSnapshot: line.unit_price_snapshot,
-      });
+      await cartRepo.addCartItem(
+        {
+          cartId,
+          variantId: line.variant_id,
+          quantity: line.quantity,
+          unitPriceSnapshot: line.unit_price_snapshot,
+        },
+        { useAdmin: true }
+      );
       addedCount++;
     } catch (err) {
       skippedItems.push({

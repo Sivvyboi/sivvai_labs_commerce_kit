@@ -10,8 +10,10 @@ import {
 
 export async function checkAvailableStock(variantId: string): Promise<number> {
   const inv = await inventoryRepo.getVariantInventory(variantId);
-  if (!inv || !inv.track_inventory) return 9999;
-  return inv.on_hand_quantity - inv.reserved_quantity;
+  // Missing inventory record is NEVER treated as untracked/unlimited stock
+  if (!inv) return 0;
+  if (!inv.track_inventory || inv.allow_backorders) return 9999;
+  return Math.max(0, inv.on_hand_quantity - inv.reserved_quantity);
 }
 
 export async function verifyStockAvailability(

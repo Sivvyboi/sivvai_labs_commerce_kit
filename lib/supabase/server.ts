@@ -52,8 +52,14 @@ export function createPublicClient() {
  * Passes x-cart-token-hash in request headers to enable guest cart RLS evaluation.
  */
 export async function createServerClient(options?: { cartTokenHash?: string }) {
-  const cookieStore = await cookies();
-  const rawCartToken = cookieStore.get(CART_COOKIE_NAME)?.value;
+  let cookieStore: Awaited<ReturnType<typeof cookies>> | null = null;
+  try {
+    cookieStore = await cookies();
+  } catch {
+    // Running outside a Next.js request context (e.g. CLI script, cron, or background task)
+  }
+
+  const rawCartToken = cookieStore?.get(CART_COOKIE_NAME)?.value;
   const cartTokenHash =
     options?.cartTokenHash !== undefined
       ? options.cartTokenHash
@@ -69,11 +75,13 @@ export async function createServerClient(options?: { cartTokenHash?: string }) {
         },
       },
       cookies: {
-        getAll() { return cookieStore.getAll(); },
+        getAll() {
+          return cookieStore?.getAll() ?? [];
+        },
         setAll(cookiesToSet) {
           try {
             cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options)
+              cookieStore?.set(name, value, options)
             );
           } catch {
             // The `setAll` method was called from a Server Component.
