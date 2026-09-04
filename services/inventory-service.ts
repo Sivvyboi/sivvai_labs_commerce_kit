@@ -1,5 +1,6 @@
 import * as inventoryRepo from "@/lib/db/inventory";
 import type { InventoryReservationRow } from "@/lib/db/inventory";
+import type { AtomicReservationResult } from "@/lib/db/inventory";
 import {
   InsufficientStockError,
   NotFoundError,
@@ -24,31 +25,40 @@ export async function verifyStockAvailability(
   return true;
 }
 
+/**
+ * Atomically reserves inventory for all items in a checkout session.
+ *
+ * Delegates to the `reserve_inventory_items` PostgreSQL RPC which uses
+ * pg_advisory_xact_lock + SELECT FOR UPDATE to serialise concurrent
+ * reservation attempts and eliminate the TOCTOU race present in the
+ * previous check-then-insert application-level sequence.
+ *
+ * If any item has insufficient stock the RPC rolls back the entire
+ * reservation batch — no partial reservations are ever created.
+ *
+ * Returns a list of reservation results compatible with the rest of the
+ * checkout flow. Note: these are not full InventoryReservationRow objects
+ * (they lack fields like `created_at`, `released_at`) — callers that need
+ * the full row should query by reservation_id.
+ */
 export async function reserveInventoryForCheckout(
   checkoutSessionId: string,
   items: Array<{ variantId: string; quantity: number }>,
   durationMinutes = 15
-): Promise<InventoryReservationRow[]> {
-  const expiresAt = new Date(Date.now() + durationMinutes * 60 * 1000).toISOString();
-  const reservations: InventoryReservationRow[] = [];
+): Promise<AtomicReservationResult[]> {
+  // Map to the shape the RPC expects.
+  const rpcItems = items.map((i) => ({
+    variant_id: i.variantId,
+    quantity: i.quantity,
+  }));
 
-  for (const item of items) {
-    await verifyStockAvailability(item.variantId, item.quantity);
-
-    const inv = await inventoryRepo.getVariantInventory(item.variantId);
-    if (!inv) throw new InsufficientStockError(item.variantId, item.quantity, 0);
-
-    const reservation = await inventoryRepo.createReservation({
-      inventoryRecordId: inv.id,
-      variantId: item.variantId,
-      checkoutSessionId,
-      quantity: item.quantity,
-      expiresAt,
-    });
-    reservations.push(reservation);
-  }
-
-  return reservations;
+  // Throws InsufficientStockError or a DB error if anything fails.
+  // On success, all items are reserved in a single atomic transaction.
+  return inventoryRepo.reserveInventoryItems(
+    checkoutSessionId,
+    rpcItems,
+    durationMinutes
+  );
 }
 
 export async function finalizeStockDeduction(params: {

@@ -45,7 +45,10 @@ export async function getAllProducts(params: productRepo.FindProductsParams = {}
  * Creates a complete product record in Supabase:
  *  1. Base product record in `products`.
  *  2. Default variant in `product_variants` (is_default: true, status: 'active').
- *  3. Associated `inventory_records` entry (on_hand_quantity: initialStock).
+ *  3. The DB trigger `trigger_ensure_variant_inventory` fires automatically and
+ *     creates the companion `inventory_records` row with on_hand_quantity = 0.
+ *  4. If initialStock > 0, we UPDATE that trigger-created row to set the
+ *     requested stock. This is the single authoritative inventory-creation path.
  */
 export async function createProductAdmin(
   data: ProductInsert,
@@ -60,7 +63,8 @@ export async function createProductAdmin(
       ? sku.trim().toUpperCase()
       : `${product.slug.toUpperCase().slice(0, 10)}-DEFAULT`;
 
-  // Create default variant
+  // 1. Insert the default variant — the DB trigger immediately creates the
+  //    inventory_records row (on_hand_quantity = 0, reserved_quantity = 0).
   const { data: defaultVariant, error: varErr } = await supabase
     .from("product_variants")
     .insert({
@@ -73,15 +77,27 @@ export async function createProductAdmin(
     .select()
     .single();
 
-  if (!varErr && defaultVariant) {
-    // Create inventory record for the default variant
-    await supabase.from("inventory_records").insert({
-      variant_id: defaultVariant.id,
-      on_hand_quantity: Math.max(0, initialStock),
-      reserved_quantity: 0,
-      low_stock_threshold: 5,
-      track_inventory: true,
-    });
+  if (varErr || !defaultVariant) {
+    // Variant creation failed; product row exists but is incomplete.
+    // Surface the error so callers can decide how to handle it.
+    throw varErr || new Error("Failed to create default variant for product");
+  }
+
+  // 2. Apply initialStock by updating the trigger-created inventory row.
+  //    We never INSERT here — the trigger is the single authority for creation.
+  if (initialStock > 0) {
+    const { error: invErr } = await supabase
+      .from("inventory_records")
+      .update({ on_hand_quantity: Math.max(0, initialStock) })
+      .eq("variant_id", defaultVariant.id);
+
+    if (invErr) {
+      console.error(
+        `[createProductAdmin] Failed to set initialStock for variant ${defaultVariant.id}:`,
+        invErr.message
+      );
+      // Non-fatal: product + variant exist; stock can be adjusted manually.
+    }
   }
 
   return product;
@@ -456,16 +472,32 @@ export async function syncProductVariants(productId: string): Promise<SyncProduc
 
   const matchedVariantIds = new Set<string>();
 
+  // --------------------------------------------------------------------------
+  // Reactivation policy (Phase 3-D, stricter rule):
+  // A variant is a reactivation candidate ONLY if ALL of these are true:
+  //   1. Its option_combination matches the target.
+  //   2. archived_at IS NULL (not permanently retired).
+  //   3. It has NEVER appeared in order_lines (no order history).
+  // Variants that fail any of these criteria are excluded from the match pool;
+  // a new variant row will be created for that combination instead.
+  // --------------------------------------------------------------------------
+
   // Process each target combination
   for (let i = 0; i < targetCombos.length; i++) {
     const targetCombo = targetCombos[i];
-    const existing = existingVariants.find((v) =>
-      compareOptionCombinations(v.option_combination as Record<string, string>, targetCombo)
+
+    // Only consider reactivation candidates: non-archived, no order history.
+    const existing = existingVariants.find(
+      (v) =>
+        v.archived_at === null &&
+        (orderCounts[v.id] || 0) === 0 &&
+        compareOptionCombinations(v.option_combination as Record<string, string>, targetCombo)
     );
 
     if (existing) {
       matchedVariantIds.add(existing.id);
-      if (existing.status !== "active" || existing.archived_at !== null) {
+      if (existing.status !== "active") {
+        // Reactivate a temporarily inactive variant (no history, no archive).
         await productRepo.updateVariant(existing.id, {
           status: "active",
           archived_at: null,
@@ -473,28 +505,17 @@ export async function syncProductVariants(productId: string): Promise<SyncProduc
         reactivated++;
       }
     } else {
-      // Create new variant
+      // No reactivation candidate found — create a fresh variant row.
+      // The DB trigger (trigger_ensure_variant_inventory) automatically creates
+      // the companion inventory_records row; no manual inventory insert needed.
       const sku = generateVariantSku(product.slug, targetCombo, i + 1);
-      const newVariant = await productRepo.createVariant({
+      await productRepo.createVariant({
         product_id: product.id,
         sku,
         option_combination: targetCombo,
         status: "active",
         is_default: false,
       });
-
-      // Defensively ensure inventory record exists
-      const supabase = createAdminClient();
-      await supabase.from("inventory_records").upsert(
-        {
-          variant_id: newVariant.id,
-          on_hand_quantity: 0,
-          reserved_quantity: 0,
-          low_stock_threshold: 5,
-          track_inventory: true,
-        },
-        { onConflict: "variant_id" }
-      );
 
       created++;
     }
@@ -545,19 +566,87 @@ export async function syncProductVariants(productId: string): Promise<SyncProduc
   };
 }
 
-/** Atomically sets a variant as default for a product */
+/**
+ * Atomically sets a variant as default for a product.
+ * Guard: Only an active, non-archived variant may be promoted.
+ * The DB RPC enforces this constraint; the service layer surfaces a clear error.
+ */
 export async function setDefaultVariantAdmin(productId: string, variantId: string) {
+  // Fetch the target variant to validate lifecycle state before calling the RPC.
+  const supabase = createAdminClient();
+  const { data: targetVariant, error: fetchErr } = await supabase
+    .from("product_variants")
+    .select("id, status, archived_at, product_id")
+    .eq("id", variantId)
+    .eq("product_id", productId)
+    .maybeSingle();
+
+  if (fetchErr || !targetVariant) {
+    throw fetchErr || new Error(`Variant ${variantId} not found for product ${productId}`);
+  }
+
+  if (targetVariant.status !== "active" || targetVariant.archived_at !== null) {
+    throw new Error(
+      `Variant ${variantId} cannot be set as default: it must be active and non-archived ` +
+      `(current status: ${targetVariant.status}, archived_at: ${targetVariant.archived_at ?? "null"})`
+    );
+  }
+
   return productRepo.setDefaultVariant(productId, variantId);
 }
 
-/** Toggles variant status between active and inactive */
+/**
+ * Toggles variant status between active and inactive.
+ *
+ * Default-variant guard:
+ * If the variant being deactivated is currently the product's default, this
+ * function automatically promotes the next eligible active, non-archived
+ * variant as the new default. If no eligible successor exists, the deactivated
+ * variant's is_default flag is cleared — the product temporarily has no default
+ * (the sync pass will repair this when a new option value is added).
+ */
 export async function toggleVariantStatusAdmin(
   variantId: string,
   status: "active" | "inactive"
 ) {
-  return productRepo.updateVariant(variantId, {
+  const supabase = createAdminClient();
+
+  // Fetch the variant to check if it is the current default.
+  const { data: target, error: fetchErr } = await supabase
+    .from("product_variants")
+    .select("id, is_default, product_id")
+    .eq("id", variantId)
+    .maybeSingle();
+
+  if (fetchErr || !target) {
+    throw fetchErr || new Error(`Variant ${variantId} not found`);
+  }
+
+  const updated = await productRepo.updateVariant(variantId, {
     status,
     archived_at: status === "inactive" ? new Date().toISOString() : null,
+    // Clear is_default when deactivating; we'll assign a successor below.
+    ...(status === "inactive" && target.is_default ? { is_default: false } : {}),
   });
+
+  // If we just deactivated the default variant, promote a successor.
+  if (status === "inactive" && target.is_default && target.product_id) {
+    const { data: candidates } = await supabase
+      .from("product_variants")
+      .select("id")
+      .eq("product_id", target.product_id)
+      .eq("status", "active")
+      .is("archived_at", null)
+      .neq("id", variantId)
+      .order("created_at", { ascending: true })
+      .limit(1);
+
+    if (candidates && candidates.length > 0) {
+      await productRepo.setDefaultVariant(target.product_id, candidates[0].id);
+    }
+    // If no candidates, product has no active variants — no default to assign.
+  }
+
+  return updated;
 }
 
