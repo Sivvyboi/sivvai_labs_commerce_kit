@@ -3,6 +3,11 @@ import { findProductByIdAdmin, findProductsAdmin } from "@/lib/db/products";
 import { NotFoundError } from "@/lib/errors";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { ProductInsert, ProductUpdate } from "@/lib/db/products";
+import {
+  generateCartesianCombinations,
+  compareOptionCombinations,
+  generateVariantSku,
+} from "@/lib/variants/combination";
 
 export async function getProducts(params?: productRepo.FindProductsParams) {
   return productRepo.findProducts(params);
@@ -354,11 +359,25 @@ export async function createOptionGroup(productId: string, name: string) {
   return data;
 }
 
-/** Deletes an option group by ID */
-export async function deleteOptionGroup(groupId: string) {
+/** Deletes an option group by ID and safely reconciles dependent variants */
+export async function deleteOptionGroup(groupId: string, productId?: string) {
   const supabase = createAdminClient();
+  let pid = productId;
+  if (!pid) {
+    const { data } = await supabase
+      .from("option_groups")
+      .select("product_id")
+      .eq("id", groupId)
+      .maybeSingle();
+    pid = data?.product_id;
+  }
+
   const { error } = await supabase.from("option_groups").delete().eq("id", groupId);
   if (error) throw error;
+
+  if (pid) {
+    await syncProductVariants(pid);
+  }
 }
 
 /** Adds an option value to an option group (e.g. Small, Red) */
@@ -378,9 +397,167 @@ export async function addOptionValue(optionGroupId: string, label: string) {
   return data;
 }
 
-/** Deletes an option value by ID */
-export async function deleteOptionValue(valueId: string) {
+/** Deletes an option value by ID and safely reconciles dependent variants */
+export async function deleteOptionValue(valueId: string, productId?: string) {
   const supabase = createAdminClient();
+  let pid = productId;
+  if (!pid) {
+    const { data } = await supabase
+      .from("option_values")
+      .select("option_groups(product_id)")
+      .eq("id", valueId)
+      .maybeSingle();
+    pid = (data as unknown as { option_groups?: { product_id?: string } })?.option_groups?.product_id;
+  }
+
   const { error } = await supabase.from("option_values").delete().eq("id", valueId);
   if (error) throw error;
+
+  if (pid) {
+    await syncProductVariants(pid);
+  }
 }
+
+// ---------------------------------------------------------------------------
+// Variant Lifecycle & Generation
+// ---------------------------------------------------------------------------
+
+export interface SyncProductVariantsResult {
+  created: number;
+  reactivated: number;
+  retired: number;
+  total: number;
+}
+
+/**
+ * Synchronizes product variants with current option groups and values:
+ * 1. Generates target combinations via Cartesian product (or [{}] for simple products).
+ * 2. Compares existing variants with target combinations.
+ * 3. Creates missing variants with companion inventory records.
+ * 4. Reactivates any inactive variants matching target combinations.
+ * 5. Safely deactivates variants that have order history or reservations.
+ * 6. Deletes unreferenced stale variants.
+ * 7. Enforces the invariant of exactly one default variant.
+ */
+export async function syncProductVariants(productId: string): Promise<SyncProductVariantsResult> {
+  const product = await findProductByIdAdmin(productId);
+  if (!product) throw new NotFoundError("Product", productId);
+
+  const existingVariants = await productRepo.findVariantsByProductId(productId);
+  const targetCombos = generateCartesianCombinations(product.option_groups || []);
+
+  const variantIds = existingVariants.map((v) => v.id);
+  const orderCounts = await productRepo.findVariantOrderLineCount(variantIds);
+  const reservationCounts = await productRepo.findVariantReservationCount(variantIds);
+
+  let created = 0;
+  let reactivated = 0;
+  let retired = 0;
+
+  const matchedVariantIds = new Set<string>();
+
+  // Process each target combination
+  for (let i = 0; i < targetCombos.length; i++) {
+    const targetCombo = targetCombos[i];
+    const existing = existingVariants.find((v) =>
+      compareOptionCombinations(v.option_combination as Record<string, string>, targetCombo)
+    );
+
+    if (existing) {
+      matchedVariantIds.add(existing.id);
+      if (existing.status !== "active" || existing.archived_at !== null) {
+        await productRepo.updateVariant(existing.id, {
+          status: "active",
+          archived_at: null,
+        });
+        reactivated++;
+      }
+    } else {
+      // Create new variant
+      const sku = generateVariantSku(product.slug, targetCombo, i + 1);
+      const newVariant = await productRepo.createVariant({
+        product_id: product.id,
+        sku,
+        option_combination: targetCombo,
+        status: "active",
+        is_default: false,
+      });
+
+      // Defensively ensure inventory record exists
+      const supabase = createAdminClient();
+      await supabase.from("inventory_records").upsert(
+        {
+          variant_id: newVariant.id,
+          on_hand_quantity: 0,
+          reserved_quantity: 0,
+          low_stock_threshold: 5,
+          track_inventory: true,
+        },
+        { onConflict: "variant_id" }
+      );
+
+      created++;
+    }
+  }
+
+  // Handle stale variants not in target combinations
+  const staleVariants = existingVariants.filter((v) => !matchedVariantIds.has(v.id));
+
+  for (const stale of staleVariants) {
+    const hasOrders = (orderCounts[stale.id] || 0) > 0;
+    const hasReservations = (reservationCounts[stale.id] || 0) > 0;
+
+    if (hasOrders || hasReservations) {
+      // Historical integrity: deactivate/archive rather than delete
+      if (stale.status !== "inactive" || !stale.archived_at || stale.is_default) {
+        await productRepo.updateVariant(stale.id, {
+          status: "inactive",
+          archived_at: new Date().toISOString(),
+          is_default: false,
+        });
+        retired++;
+      }
+    } else {
+      // Safe to clean up
+      await productRepo.deleteVariant(stale.id);
+      retired++;
+    }
+  }
+
+  // Ensure exactly one default variant invariant
+  const currentVariants = await productRepo.findVariantsByProductId(productId);
+  const activeVariants = currentVariants.filter(
+    (v) => v.status === "active" && v.archived_at === null
+  );
+
+  const defaultVariant = activeVariants.find((v) => v.is_default);
+  if (!defaultVariant && activeVariants.length > 0) {
+    await productRepo.setDefaultVariant(productId, activeVariants[0].id);
+  } else if (defaultVariant) {
+    await productRepo.setDefaultVariant(productId, defaultVariant.id);
+  }
+
+  return {
+    created,
+    reactivated,
+    retired,
+    total: activeVariants.length,
+  };
+}
+
+/** Atomically sets a variant as default for a product */
+export async function setDefaultVariantAdmin(productId: string, variantId: string) {
+  return productRepo.setDefaultVariant(productId, variantId);
+}
+
+/** Toggles variant status between active and inactive */
+export async function toggleVariantStatusAdmin(
+  variantId: string,
+  status: "active" | "inactive"
+) {
+  return productRepo.updateVariant(variantId, {
+    status,
+    archived_at: status === "inactive" ? new Date().toISOString() : null,
+  });
+}
+

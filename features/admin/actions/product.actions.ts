@@ -438,7 +438,7 @@ export async function addOptionValueAction(optionGroupId: string, label: string,
 export async function deleteOptionValueAction(valueId: string, productId: string) {
   try {
     await requirePermission("manage_products");
-    await productService.deleteOptionValue(valueId);
+    await productService.deleteOptionValue(valueId, productId);
     revalidateTag("catalog", "default");
     revalidatePath("/", "layout");
     revalidatePath(`/admin/products/${productId}`);
@@ -470,4 +470,83 @@ export async function updateVariantAction(input: UpdateVariantAdminInput, produc
     };
   }
 }
+
+export async function syncProductVariantsAction(productId: string) {
+  try {
+    await requirePermission("manage_products");
+    const result = await productService.syncProductVariants(productId);
+
+    await logAuditEvent({
+      action: "product_variants.sync",
+      entityType: "product",
+      entityId: productId,
+      metadata: result as unknown as Record<string, unknown>,
+    });
+
+    revalidateTag("catalog", "default");
+    revalidatePath("/", "layout");
+    revalidatePath(`/admin/products/${productId}`);
+    return { success: true, result };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to generate / sync product variants",
+    };
+  }
+}
+
+export async function setDefaultVariantAction(productId: string, variantId: string) {
+  try {
+    await requirePermission("manage_products");
+    await productService.setDefaultVariantAdmin(productId, variantId);
+
+    await logAuditEvent({
+      action: "product_variant.set_default",
+      entityType: "product_variant",
+      entityId: variantId,
+      metadata: { productId },
+    });
+
+    revalidateTag("catalog", "default");
+    revalidatePath("/", "layout");
+    revalidatePath(`/admin/products/${productId}`);
+    return { success: true };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to set default variant",
+    };
+  }
+}
+
+export async function toggleVariantStatusAction(
+  variantId: string,
+  status: "active" | "inactive",
+  productId?: string
+) {
+  try {
+    await requirePermission("manage_products");
+    const variant = await productService.toggleVariantStatusAdmin(variantId, status);
+
+    await logAuditEvent({
+      action: "product_variant.toggle_status",
+      entityType: "product_variant",
+      entityId: variantId,
+      metadata: { status, productId },
+    });
+
+    revalidateTag("catalog", "default");
+    revalidatePath("/", "layout");
+    if (productId) {
+      revalidatePath(`/admin/products/${productId}`);
+    }
+    return { success: true, variant };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to toggle variant status",
+    };
+  }
+}
+
 

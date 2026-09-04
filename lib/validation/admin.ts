@@ -87,9 +87,31 @@ export const UpdateVariantAdminSchema = z.object({
   id: z.string().uuid(),
   sku: z.string().optional().nullable(),
   price_override: z.coerce.number().min(0).optional().nullable(),
+  status: z.enum(["active", "inactive"]).optional(),
+  is_default: z.boolean().optional(),
 });
 
 export type UpdateVariantAdminInput = z.infer<typeof UpdateVariantAdminSchema>;
+
+export const SyncVariantsAdminSchema = z.object({
+  productId: z.string().uuid(),
+});
+
+export type SyncVariantsAdminInput = z.infer<typeof SyncVariantsAdminSchema>;
+
+export const SetDefaultVariantAdminSchema = z.object({
+  productId: z.string().uuid(),
+  variantId: z.string().uuid(),
+});
+
+export type SetDefaultVariantAdminInput = z.infer<typeof SetDefaultVariantAdminSchema>;
+
+export const ToggleVariantStatusAdminSchema = z.object({
+  variantId: z.string().uuid(),
+  status: z.enum(["active", "inactive"]),
+});
+
+export type ToggleVariantStatusAdminInput = z.infer<typeof ToggleVariantStatusAdminSchema>;
 
 // ---------------------------------------------------------------------------
 // Categories

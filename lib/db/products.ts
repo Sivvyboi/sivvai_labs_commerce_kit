@@ -1,11 +1,14 @@
 import "server-only";
 import { createClient, createPublicClient } from "../supabase/server";
+import { createAdminClient } from "../supabase/admin";
 import type { Database } from "@/types";
 import type { CategoryRow } from "./categories";
 
 export type ProductRow = Database["public"]["Tables"]["products"]["Row"];
 export type ProductInsert = Database["public"]["Tables"]["products"]["Insert"];
 export type ProductUpdate = Database["public"]["Tables"]["products"]["Update"];
+export type ProductVariantInsert = Database["public"]["Tables"]["product_variants"]["Insert"];
+export type ProductVariantUpdate = Database["public"]["Tables"]["product_variants"]["Update"];
 export type VariantInventoryRow = {
   id: string;
   on_hand_quantity: number;
@@ -173,6 +176,14 @@ export async function findProducts(
   return { data: (data || []) as unknown as ProductWithDetails[], count: count || 0 };
 }
 
+async function getWriteClient() {
+  try {
+    return await createClient();
+  } catch {
+    return createAdminClient();
+  }
+}
+
 /**
  * Admin-only: lists products of any status using the authenticated admin session.
  * RLS is still enforced via the admin user's JWT — this just bypasses the
@@ -183,7 +194,7 @@ export async function findProducts(
 export async function findProductsAdmin(
   params: FindProductsParams = {}
 ): Promise<{ data: ProductWithDetails[]; count: number }> {
-  const supabase = await createClient();
+  const supabase = await getWriteClient();
 
   let categoryId: string | undefined;
   if (params.categorySlug) {
@@ -298,7 +309,7 @@ export async function findProductById(id: string): Promise<ProductWithDetails | 
  * Uses .maybeSingle() to return null cleanly (no 406) when no row is found.
  */
 export async function findProductByIdAdmin(id: string): Promise<ProductWithDetails | null> {
-  const supabase = await createClient();
+  const supabase = await getWriteClient();
   const { data, error } = await supabase
     .from("products")
     .select(PRODUCT_COLUMNS)
@@ -324,7 +335,7 @@ export async function findProductBySlug(slug: string): Promise<ProductWithDetail
 }
 
 export async function createProduct(data: ProductInsert): Promise<ProductRow> {
-  const supabase = await createClient();
+  const supabase = await getWriteClient();
   const { data: inserted, error } = await supabase
     .from("products")
     .insert(data)
@@ -336,7 +347,7 @@ export async function createProduct(data: ProductInsert): Promise<ProductRow> {
 }
 
 export async function updateProduct(id: string, data: ProductUpdate): Promise<ProductRow> {
-  const supabase = await createClient();
+  const supabase = await getWriteClient();
   const { data: updated, error } = await supabase
     .from("products")
     .update(data)
@@ -353,7 +364,7 @@ export async function archiveProduct(id: string): Promise<ProductRow> {
 }
 
 export async function softDeleteProduct(id: string): Promise<ProductRow> {
-  const supabase = await createClient();
+  const supabase = await getWriteClient();
   const { data: updated, error } = await supabase
     .from("products")
     .update({ deleted_at: new Date().toISOString() })
@@ -368,3 +379,135 @@ export async function softDeleteProduct(id: string): Promise<ProductRow> {
   }
   return updated;
 }
+
+// ---------------------------------------------------------------------------
+// Variant Domain Repository Methods
+// ---------------------------------------------------------------------------
+
+export async function findVariantsByProductId(productId: string): Promise<ProductVariantRow[]> {
+  const supabase = createAdminClient();
+  const { data, error } = await supabase
+    .from("product_variants")
+    .select(`
+      id, product_id, image_id, sku, option_combination, price_override, is_default, status,
+      archived_at, created_at, updated_at,
+      inventory:inventory_records(id, on_hand_quantity, reserved_quantity, low_stock_threshold, track_inventory, allow_backorders)
+    `)
+    .eq("product_id", productId)
+    .order("is_default", { ascending: false })
+    .order("created_at", { ascending: true });
+
+  if (error) throw error;
+  return (data || []) as unknown as ProductVariantRow[];
+}
+
+export async function findVariantOrderLineCount(variantIds: string[]): Promise<Record<string, number>> {
+  if (variantIds.length === 0) return {};
+  const supabase = createAdminClient();
+  const { data, error } = await supabase
+    .from("order_lines")
+    .select("variant_id")
+    .in("variant_id", variantIds);
+
+  if (error) throw error;
+
+  const counts: Record<string, number> = {};
+  for (const row of data || []) {
+    if (row.variant_id) {
+      counts[row.variant_id] = (counts[row.variant_id] || 0) + 1;
+    }
+  }
+  return counts;
+}
+
+export async function findVariantReservationCount(variantIds: string[]): Promise<Record<string, number>> {
+  if (variantIds.length === 0) return {};
+  const supabase = createAdminClient();
+  const { data, error } = await supabase
+    .from("inventory_reservations")
+    .select("variant_id")
+    .in("variant_id", variantIds)
+    .eq("status", "active");
+
+  if (error) throw error;
+
+  const counts: Record<string, number> = {};
+  for (const row of data || []) {
+    if (row.variant_id) {
+      counts[row.variant_id] = (counts[row.variant_id] || 0) + 1;
+    }
+  }
+  return counts;
+}
+
+export async function createVariant(data: ProductVariantInsert): Promise<ProductVariantRow> {
+  const supabase = createAdminClient();
+  const { data: inserted, error } = await supabase
+    .from("product_variants")
+    .insert(data)
+    .select(`
+      id, product_id, image_id, sku, option_combination, price_override, is_default, status,
+      archived_at, created_at, updated_at,
+      inventory:inventory_records(id, on_hand_quantity, reserved_quantity, low_stock_threshold, track_inventory, allow_backorders)
+    `)
+    .single();
+
+  if (error || !inserted) throw error || new Error("Failed to create product variant");
+  return inserted as unknown as ProductVariantRow;
+}
+
+export async function updateVariant(
+  variantId: string,
+  data: ProductVariantUpdate
+): Promise<ProductVariantRow> {
+  const supabase = createAdminClient();
+  const { data: updated, error } = await supabase
+    .from("product_variants")
+    .update(data)
+    .eq("id", variantId)
+    .select(`
+      id, product_id, image_id, sku, option_combination, price_override, is_default, status,
+      archived_at, created_at, updated_at,
+      inventory:inventory_records(id, on_hand_quantity, reserved_quantity, low_stock_threshold, track_inventory, allow_backorders)
+    `)
+    .single();
+
+  if (error || !updated) throw error || new Error("Failed to update product variant");
+  return updated as unknown as ProductVariantRow;
+}
+
+export async function deleteVariant(variantId: string): Promise<void> {
+  const supabase = createAdminClient();
+  const { error } = await supabase.from("product_variants").delete().eq("id", variantId);
+  if (error) throw error;
+}
+
+export async function setDefaultVariant(productId: string, variantId: string): Promise<void> {
+  const supabase = createAdminClient();
+
+  // Try RPC first for atomicity
+  const { error: rpcError } = await supabase.rpc("set_product_default_variant" as never, {
+    p_product_id: productId,
+    p_variant_id: variantId,
+  } as never);
+
+  if (!rpcError) return;
+
+  // Fallback if RPC is not yet loaded in DB
+  const { error: unsetError } = await supabase
+    .from("product_variants")
+    .update({ is_default: false })
+    .eq("product_id", productId)
+    .neq("id", variantId);
+
+  if (unsetError) throw unsetError;
+
+  const { error: setError } = await supabase
+    .from("product_variants")
+    .update({ is_default: true })
+    .eq("id", variantId)
+    .eq("product_id", productId);
+
+  if (setError) throw setError;
+}
+

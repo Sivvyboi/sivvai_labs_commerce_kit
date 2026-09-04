@@ -37,7 +37,11 @@ import {
   deleteOptionValueAction,
   restoreProductAction,
   generateProductImageUploadUrlAction,
+  syncProductVariantsAction,
+  setDefaultVariantAction,
+  toggleVariantStatusAction,
 } from "@/features/admin/actions/product.actions";
+import { formatCombinationLabel, generateCartesianCombinations } from "@/lib/variants/combination";
 
 import { ConfirmDialog } from "@/components/admin/ui/ConfirmDialog";
 import { StatusBadge } from "@/components/admin/ui/StatusBadge";
@@ -81,6 +85,34 @@ export function EditProductForm({ product, categories }: EditProductFormProps) {
 
   // Option Group State
   const [newOptionGroupName, setNewOptionGroupName] = React.useState("");
+
+  const possibleCombos = React.useMemo(() => {
+    return generateCartesianCombinations(product.option_groups || []);
+  }, [product.option_groups]);
+
+  async function handleSyncVariants() {
+    setFeedback({
+      status: "loading",
+      title: "Syncing Variants…",
+      message: "Generating Cartesian combinations and updating variants",
+    });
+    const res = await execute(() => syncProductVariantsAction(product.id));
+    if (res?.success && res.result) {
+      setFeedback({
+        status: "success",
+        title: "Variants Synchronized!",
+        message: `Generated and synced variants (Created: ${res.result.created}, Reactivated: ${res.result.reactivated}, Retired: ${res.result.retired}, Total active: ${res.result.total}).`,
+      });
+    } else {
+      setFeedback({
+        status: "error",
+        title: "Sync Failed",
+        message: res?.error || "Could not sync variants.",
+        errorDetails: res?.error,
+        onRetry: handleSyncVariants,
+      });
+    }
+  }
 
   // Confirm Archive Dialog
   const [archiveConfirmOpen, setArchiveConfirmOpen] = React.useState(false);
@@ -780,20 +812,62 @@ export function EditProductForm({ product, categories }: EditProductFormProps) {
             </button>
           </div>
         </form>
+
+        {/* Sync Variants Button if Option Groups exist */}
+        {product.option_groups && product.option_groups.length > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-[var(--kit-border)]">
+            <div className="text-xs text-[var(--kit-text-secondary)]">
+              Target combinations:{" "}
+              <span className="font-semibold text-[var(--kit-text-primary)]">
+                {possibleCombos.length}
+              </span>{" "}
+              {possibleCombos.length === 1 ? "variant" : "variants"}
+            </div>
+            <button
+              type="button"
+              onClick={handleSyncVariants}
+              disabled={loading}
+              className="inline-flex h-8 items-center gap-1.5 rounded-[var(--kit-radius-md)] bg-[var(--kit-accent)] px-3 text-xs font-semibold text-white hover:opacity-90 transition-all disabled:opacity-50 shadow-sm"
+            >
+              <RotateCcw size={13} className={loading ? "animate-spin" : ""} />
+              <span>Generate / Sync Variants ({possibleCombos.length})</span>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Variants Section (Edit SKU & Price Override) */}
-      {product.variants.length > 0 && (
-        <div className="rounded-[var(--kit-radius-lg)] border border-[var(--kit-border)] bg-[var(--kit-card)] p-6 shadow-[var(--kit-shadow-sm)] space-y-4">
-          <h2 className="text-sm font-semibold text-[var(--kit-text-primary)]">Product Variants ({product.variants.length})</h2>
+      <div className="rounded-[var(--kit-radius-lg)] border border-[var(--kit-border)] bg-[var(--kit-card)] p-6 shadow-[var(--kit-shadow-sm)] space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-[var(--kit-text-primary)]">
+            Product Variants ({product.variants.length})
+          </h2>
+          <button
+            type="button"
+            onClick={handleSyncVariants}
+            disabled={loading}
+            className="inline-flex h-7 items-center gap-1 rounded-[var(--kit-radius-md)] border border-[var(--kit-border)] bg-[var(--kit-surface)] px-2.5 text-xs font-medium text-[var(--kit-text-primary)] hover:bg-[var(--kit-muted)] transition-colors disabled:opacity-50"
+          >
+            <RotateCcw size={12} className={loading ? "animate-spin" : ""} />
+            Sync Variants
+          </button>
+        </div>
 
+        {product.variants.length === 0 ? (
+          <p className="text-xs text-[var(--kit-text-muted)]">No variants found. Click Sync Variants to generate them.</p>
+        ) : (
           <div className="divide-y divide-[var(--kit-border)] border border-[var(--kit-border)] rounded-[var(--kit-radius-md)] overflow-hidden">
             {product.variants.map((v) => (
-              <VariantRow key={v.id} variant={v} storeCurrency={storeCurrency} />
+              <VariantRow
+                key={v.id}
+                variant={v}
+                productId={product.id}
+                storeCurrency={storeCurrency}
+              />
             ))}
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Bottom Action Bar: Save Changes and Next (Review & Publish) */}
       <div className="flex flex-wrap items-center justify-between gap-4 pt-6 pb-12 border-t border-[var(--kit-border)]">
@@ -939,9 +1013,11 @@ function OptionGroupCard({
 
 function VariantRow({
   variant,
+  productId,
   storeCurrency,
 }: {
   variant: ProductWithDetails["variants"][0];
+  productId: string;
   storeCurrency: string;
 }) {
   const { execute, loading } = useAdmin();
@@ -950,30 +1026,77 @@ function VariantRow({
     variant.price_override ? (variant.price_override / 100).toString() : ""
   );
 
+  const inv = Array.isArray(variant.inventory) ? variant.inventory[0] : variant.inventory;
+  const stock = inv?.on_hand_quantity ?? 0;
+
   async function handleSaveVariant() {
     const overrideKobo = overridePrice ? Math.round(Number(overridePrice) * 100) : null;
     await execute(() =>
-      updateVariantAction({
-        id: variant.id,
-        sku: sku || null,
-        price_override: overrideKobo,
-      })
+      updateVariantAction(
+        {
+          id: variant.id,
+          sku: sku || null,
+          price_override: overrideKobo,
+        },
+        productId
+      )
     );
   }
 
+  async function handleSetDefault() {
+    if (variant.is_default) return;
+    await execute(() => setDefaultVariantAction(productId, variant.id));
+  }
 
+  async function handleToggleStatus() {
+    const nextStatus = variant.status === "active" ? "inactive" : "active";
+    await execute(() => toggleVariantStatusAction(variant.id, nextStatus, productId));
+  }
+
+  const comboLabel = formatCombinationLabel(variant.option_combination as Record<string, string>);
 
   return (
-    <div className="flex flex-col gap-2 p-3 sm:flex-row sm:items-center sm:justify-between bg-[var(--kit-surface)]">
-      <div className="flex items-center gap-2 text-xs font-mono text-[var(--kit-text-secondary)]">
-        <span>SKU: {variant.sku || "None"}</span>
-        {variant.is_default && (
-          <span className="rounded bg-[var(--kit-accent)]/10 px-1.5 py-0.5 text-[10px] font-semibold text-[var(--kit-accent)] font-sans">
-            Default
+    <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between bg-[var(--kit-surface)] hover:bg-[var(--kit-muted)]/20 transition-colors">
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        <span className="font-semibold text-[var(--kit-text-primary)] rounded-[var(--kit-radius-sm)] bg-[var(--kit-card)] border border-[var(--kit-border)] px-2 py-1">
+          {comboLabel}
+        </span>
+
+        {variant.is_default ? (
+          <span className="rounded bg-[var(--kit-accent)]/10 px-2 py-0.5 text-[10px] font-bold text-[var(--kit-accent)]">
+            ★ Default
           </span>
+        ) : (
+          <button
+            type="button"
+            onClick={handleSetDefault}
+            disabled={loading}
+            className="text-[10px] text-[var(--kit-text-muted)] hover:text-[var(--kit-accent)] underline transition-colors"
+          >
+            Set as Default
+          </button>
         )}
+
+        <button
+          type="button"
+          onClick={handleToggleStatus}
+          disabled={loading}
+          className={clsx(
+            "rounded px-2 py-0.5 text-[10px] font-semibold transition-colors",
+            variant.status === "active"
+              ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:opacity-80"
+              : "bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:opacity-80"
+          )}
+        >
+          {variant.status === "active" ? "Active" : "Inactive"}
+        </button>
+
+        <span className="text-xs text-[var(--kit-text-muted)] font-mono">
+          Stock: {stock}
+        </span>
       </div>
-      <div className="flex flex-1 items-center gap-3 sm:justify-end">
+
+      <div className="flex flex-wrap items-center gap-2 sm:justify-end">
         <input
           type="text"
           value={sku}
