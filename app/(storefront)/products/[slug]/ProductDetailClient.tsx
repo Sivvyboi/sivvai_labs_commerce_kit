@@ -64,13 +64,23 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
   const activePrice = selectedVariant?.price_override ?? product.base_price;
   const comparePrice = product.compare_at_price;
 
-  const stockSummary = useMemo(
-    () => getProductStockSummary(product, selectedVariant?.id),
-    [product, selectedVariant?.id]
-  );
+  const stockSummary = useMemo(() => {
+    if (!selectedVariant) {
+      return { isAvailable: false, stockQuantity: 0, lowStockThreshold: 5 };
+    }
+    return getProductStockSummary(product, selectedVariant.id);
+  }, [product, selectedVariant]);
 
-  const isAvailable = stockSummary.isAvailable;
+  const isAvailable = Boolean(selectedVariant && stockSummary.isAvailable);
   const stockQuantity = stockSummary.stockQuantity;
+
+  // Handle variant selection with automatic image switching
+  const handleSelectVariant = (variant: ProductVariantRow | null) => {
+    setSelectedVariant(variant);
+    if (variant?.image_id) {
+      setOverrideImageId(null);
+    }
+  };
 
   // Handle Add to Cart
   const handleAddToCart = async () => {
@@ -142,16 +152,26 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
                 {product.category.name}
               </span>
             )}
-            <StockBadge quantity={stockQuantity} threshold={stockSummary.lowStockThreshold} variant="default" />
+            {!selectedVariant ? (
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-[var(--kit-muted)]/20 text-[var(--kit-muted-fg)]">
+                Select combination
+              </span>
+            ) : (
+              <StockBadge quantity={stockQuantity} threshold={stockSummary.lowStockThreshold} variant="default" />
+            )}
           </div>
 
           <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-[var(--kit-text-primary)] leading-tight">
             {product.name}
           </h1>
 
-          {selectedVariant?.sku && (
+          {selectedVariant?.sku ? (
             <p className="text-xs text-[var(--kit-muted-fg)] font-mono">
               SKU: {selectedVariant.sku}
+            </p>
+          ) : (
+            <p className="text-xs text-[var(--kit-muted-fg)] font-mono">
+              SKU: —
             </p>
           )}
         </div>
@@ -171,7 +191,7 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
             variants={product.variants}
             optionGroups={product.option_groups}
             selectedVariant={selectedVariant}
-            onSelectVariant={(v) => setSelectedVariant(v)}
+            onSelectVariant={handleSelectVariant}
           />
         )}
 
@@ -196,7 +216,7 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
             <button
               type="button"
               onClick={handleAddToCart}
-              disabled={!isAvailable || isAdding || isCartLoading}
+              disabled={!selectedVariant || !isAvailable || isAdding || isCartLoading}
               className="flex items-center justify-center gap-2 rounded-xl bg-[var(--kit-surface)] border border-[var(--kit-border)] px-6 py-3.5 text-sm font-semibold text-[var(--kit-text-primary)] hover:bg-[var(--kit-accent)] hover:text-[var(--kit-accent-fg)] hover:border-[var(--kit-accent)] disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-xs min-h-[48px]"
             >
               {isAdding ? (
@@ -204,22 +224,36 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
               ) : (
                 <ShoppingBag className="h-5 w-5" />
               )}
-              <span>Add to Cart</span>
+              <span>
+                {!selectedVariant
+                  ? "Select Options"
+                  : !isAvailable
+                  ? "Out of Stock"
+                  : "Add to Cart"}
+              </span>
             </button>
 
             {/* Buy Now Button */}
             <button
               type="button"
               onClick={handleBuyNow}
-              disabled={!isAvailable || isBuying}
+              disabled={!selectedVariant || !isAvailable || isBuying}
               className="flex items-center justify-center gap-2 rounded-xl bg-[var(--kit-accent)] px-6 py-3.5 text-sm font-semibold text-[var(--kit-accent-fg)] hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-opacity shadow-md min-h-[48px]"
             >
               {isBuying ? (
-                <Loader2 className="h-5 w-5 animate-spin" />
+                <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
-                <Zap className="h-5 w-5 fill-current" />
+                <Zap className="h-4 w-4 fill-current" />
               )}
-              <span>{featureFlag.whatsappCheckout ? "Buy on WhatsApp" : "Buy Now"}</span>
+              <span>
+                {featureFlag.whatsappCheckout
+                  ? "Buy on WhatsApp"
+                  : !selectedVariant
+                  ? "Select Options"
+                  : !isAvailable
+                  ? "Out of Stock"
+                  : "Buy Now"}
+              </span>
             </button>
           </div>
 
@@ -266,14 +300,14 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
             <p className="text-[10px] text-[var(--kit-muted-fg)] uppercase truncate font-medium">
               {selectedVariant?.sku ? `SKU: ${selectedVariant.sku}` : product.name}
             </p>
-            <Price amount={Number(activePrice)} size="sm" />
+            <Price amount={Number(activePrice) / 100} size="sm" />
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
             <button
               type="button"
               onClick={handleAddToCart}
-              disabled={!isAvailable || isAdding || isCartLoading}
+              disabled={!selectedVariant || !isAvailable || isAdding || isCartLoading}
               className="flex h-11 w-11 items-center justify-center rounded-xl bg-[var(--kit-surface)] border border-[var(--kit-border)] text-[var(--kit-text-primary)] active:scale-95 disabled:opacity-40 transition-transform min-h-[44px] min-w-[44px]"
               aria-label="Add to cart"
             >
@@ -287,7 +321,7 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
             <button
               type="button"
               onClick={handleBuyNow}
-              disabled={!isAvailable || isBuying}
+              disabled={!selectedVariant || !isAvailable || isBuying}
               className="flex h-11 items-center justify-center gap-1.5 rounded-xl bg-[var(--kit-accent)] px-4 text-xs font-semibold text-[var(--kit-accent-fg)] active:scale-95 disabled:opacity-40 transition-transform min-h-[44px]"
             >
               {isBuying ? (

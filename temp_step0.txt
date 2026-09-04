@@ -1,0 +1,1725 @@
+<USER_REQUEST>
+Below is the roadmap of what is missing or what needs fixing in the current project. I want you to solve these in 2 phases each after solving the first two stop wait for feed back then we move to the next phrase and so on.  I agree. **There is no value in sending this back through Antigravity for another discovery audit.** I re-checked the current `main` repository against the earlier findings, and the right move now is to establish a **master remediation roadmap**.
+
+The important distinction is that I am not treating the old `audit_report.md` as the source of truth. Some of that report predates the latest changes. For example, the current `lib/db/products.ts`, `services/inventory-service.ts`, `services/product-service.ts`, and SEO files have since been modified. I am basing the roadmap on the **current repository implementation plus the architecture we've established throughout the project**.
+
+# Sivvai Labs Commerce Kit — Master Variant + SEO Remediation Roadmap
+
+## 0. The governing principle
+
+We are **not rebuilding Commerce Kit**.
+
+The existing architecture is good enough to finish this correctly:
+
+```text
+                    ┌─────────────────────┐
+                    │      PRODUCT        │
+                    └──────────┬──────────┘
+                               │
+                    ┌──────────▼──────────┐
+                    │   OPTION GROUPS     │
+                    │   Size / Color etc. │
+                    └──────────┬──────────┘
+                               │
+                    ┌──────────▼──────────┐
+                    │    OPTION VALUES    │
+                    │ S/M/L, Red/Blue etc │
+                    └──────────┬──────────┘
+                               │
+                    ┌──────────▼──────────┐
+                    │      VARIANTS       │
+                    │ purchasable atoms   │
+                    └──────────┬──────────┘
+                               │
+                 ┌─────────────┴─────────────┐
+                 │                           │
+        ┌────────▼────────┐        ┌────────▼────────┐
+        │    INVENTORY    │        │      SEO        │
+        │ per variant     │        │ ProductGroup    │
+        └────────┬────────┘        │ + variants      │
+                 │                 └─────────────────┘
+                 ▼
+        ┌──────────────────┐
+        │       CART       │
+        │ variant_id      │
+        └────────┬─────────┘
+                 ▼
+        ┌──────────────────┐
+        │     CHECKOUT     │
+        │ reservations     │
+        └────────┬─────────┘
+                 ▼
+        ┌──────────────────┐
+        │     PAYMENT      │
+        └────────┬─────────┘
+                 ▼
+        ┌──────────────────┐
+        │      ORDER       │
+        │ immutable data   │
+        └──────────────────┘
+```
+
+The goal is to make this graph **internally consistent**.
+
+---
+
+# 1. Critical findings we need to solve
+
+I've grouped the issues into four levels.
+
+### 🔴 Critical — must be fixed before calling variants production-ready
+
+1. Additional variants do not have a complete creation lifecycle.
+2. Variant combinations aren't generated/validated as a coherent domain.
+3. Variants can exist without inventory while checkout requires inventory.
+4. Storefront availability and checkout availability disagree.
+5. Variant selection can resolve to an incomplete/wrong combination.
+6. Variant pricing isn't consistently resolved.
+7. Multi-variant cart → checkout → order needs complete end-to-end verification.
+8. Product structured data only describes one/default variant.
+9. Sitemap infrastructure is absent.
+10. Production robots configuration currently prevents indexing.
+
+### 🟠 High
+
+11. No strong database invariant for unique option combinations.
+12. No strong invariant for exactly one default variant.
+13. Option/value deletion can potentially invalidate variant combinations.
+14. Variant image association needs lifecycle validation.
+15. Variant URLs aren't incorporated into metadata/SEO logic.
+16. Category SEO is underdeveloped.
+17. Canonical/faceted catalog URL policy isn't formally defined.
+18. SEO configuration is split between global config and page-specific implementations.
+19. Production domain configuration needs stronger SEO guarantees.
+20. Order historical variant snapshots need explicit verification.
+
+### 🟡 Medium
+
+21. `generateStaticParams()` only pre-renders 20 products.
+22. Product/category structured data can be expanded appropriately.
+23. Image SEO/alt-text handling needs consistency.
+24. SEO/indexability should be explicitly classified route-by-route.
+25. Variant-aware regression scripts are missing.
+26. Some service/repository boundaries still duplicate business logic.
+
+---
+
+# PHASE 1 — Establish the Variant Domain Contract
+
+**Priority: 🔴 CRITICAL**
+
+Before touching UI, we need to formally define what a valid variant means.
+
+The current schema already establishes `product_variants` as the purchasable atom and stores `option_combination` as JSONB.
+
+The problem isn't that the schema is fundamentally wrong.
+
+The problem is that the application hasn't finished enforcing the meaning of that schema.
+
+## Target invariant
+
+For a product:
+
+```text
+T-Shirt
+
+Color:
+  Red
+  Blue
+
+Size:
+  Small
+  Medium
+  Large
+```
+
+the valid variant set is:
+
+```text
+Red / Small
+Red / Medium
+Red / Large
+Blue / Small
+Blue / Medium
+Blue / Large
+```
+
+Each variant must have:
+
+```text
+variant.id
+product_id
+option_combination
+sku
+status
+price override
+image
+inventory
+```
+
+and every combination must be unique.
+
+### We need to establish:
+
+* What constitutes a combination?
+* Are option IDs stored in `option_combination`, or value IDs?
+* How are combinations normalized?
+* How are combinations compared?
+* What happens when an option value is deleted?
+* Can a variant exist without options?
+* When is `{}` valid?
+* How does a simple product differ from a configurable product?
+* What is the canonical/default variant?
+
+### Important decision
+
+I recommend:
+
+> **Simple products remain a single default variant with `{}` as their combination.**
+
+That preserves the existing architecture.
+
+A configurable product then has one or more actual combinations.
+
+---
+
+# PHASE 2 — Fix Variant Creation Lifecycle
+
+**Priority: 🔴 CRITICAL**
+
+This is where the current implementation has the largest functional hole.
+
+`createProductAdmin()` creates the initial product, then creates **one default variant**, then creates its inventory record.
+
+The service also exposes functions for:
+
+* creating option groups
+* adding option values
+* deleting option groups
+* deleting option values
+* updating variant SKU/price
+
+but there is no complete variant-generation lifecycle.
+
+## Target workflow
+
+Admin:
+
+```text
+Create Product
+      ↓
+Add Size
+      ↓
+Add S / M / L
+      ↓
+Add Color
+      ↓
+Add Red / Blue
+      ↓
+Generate Variants
+```
+
+System generates:
+
+```text
+S + Red
+S + Blue
+M + Red
+M + Blue
+L + Red
+L + Blue
+```
+
+Then each receives:
+
+```text
+SKU
+price
+status
+inventory
+image
+```
+
+## Required behavior
+
+If an admin adds another value later:
+
+```text
+Color:
+Red
+Blue
+Green
+```
+
+the system must intelligently add:
+
+```text
+S + Green
+M + Green
+L + Green
+```
+
+without duplicating existing variants.
+
+Likewise, if an option value is removed, the system must determine whether the corresponding variants:
+
+* become inactive
+* become archived
+* are deleted
+* or are retained historically.
+
+**We should not silently delete variants that may already have order history.**
+
+---
+
+# PHASE 3 — Make Variant + Inventory Atomic
+
+**Priority: 🔴 CRITICAL**
+
+This is the root of the checkout failure.
+
+The current inventory service deliberately treats a missing inventory record as untracked stock in `checkAvailableStock()`:
+
+```text
+if (!inv || !inv.track_inventory) return 9999;
+```
+
+but `reserveInventoryForCheckout()` subsequently requires the inventory record and throws if it doesn't exist.
+
+That creates:
+
+```text
+PDP
+ ↓
+"No inventory record"
+ ↓
+treated as available
+ ↓
+Add to Cart
+ ↓
+Checkout
+ ↓
+"No inventory record"
+ ↓
+FAIL
+```
+
+That must disappear.
+
+## Target rule
+
+We need exactly one interpretation.
+
+I recommend:
+
+> **Every purchasable variant receives an inventory record.**
+
+Even if inventory tracking is disabled:
+
+```text
+inventory_records
+track_inventory = false
+```
+
+The record still exists.
+
+That makes:
+
+```text
+variant → inventory
+```
+
+a stable invariant.
+
+The existing database already models inventory as 1-to-1 with variants through `variant_id UNIQUE`.
+
+So we can reinforce the existing architecture rather than inventing another inventory model.
+
+---
+
+# PHASE 4 — Make Inventory Reservation Transaction-Safe
+
+**Priority: 🔴 CRITICAL**
+
+The current reservation logic does:
+
+```text
+check stock
+ ↓
+fetch inventory
+ ↓
+create reservation
+```
+
+for every line sequentially.
+
+That is vulnerable to concurrency.
+
+Two customers can theoretically see the same available quantity before either reservation is committed.
+
+## Target
+
+Reservation needs to be authoritative at the database boundary.
+
+Something along the lines of:
+
+```text
+reserve_inventory(checkout_session, [
+  variant A × 2,
+  variant B × 1
+])
+```
+
+inside one transactional operation.
+
+The database should atomically:
+
+1. resolve inventory
+2. expire stale reservations if necessary
+3. calculate available quantity
+4. lock the relevant inventory rows
+5. verify stock
+6. create reservations
+7. update reserved quantity
+8. return reservation IDs.
+
+This is much safer than application-side:
+
+```text
+SELECT
+INSERT
+SELECT
+INSERT
+```
+
+---
+
+# PHASE 5 — Fix Variant Selection
+
+**Priority: 🔴 CRITICAL**
+
+The storefront needs one deterministic combination resolver.
+
+Not:
+
+```text
+find exact combination
+↓
+if missing
+↓
+find something matching one selected group
+```
+
+The selected options must always resolve to exactly one variant or `null`.
+
+## Example
+
+Selected:
+
+```text
+Color = Red
+Size = Large
+```
+
+Resolver:
+
+```text
+{
+  Color: Red,
+  Size: Large
+}
+```
+
+must produce:
+
+```text
+variant.id = ABC
+```
+
+or:
+
+```text
+null
+```
+
+Never:
+
+```text
+Red / Medium
+```
+
+as a fallback.
+
+---
+
+# PHASE 6 — Variant Availability Matrix
+
+**Priority: 🔴 CRITICAL**
+
+The UI needs to understand combinations, not just individual values.
+
+Example:
+
+```text
+             Small    Medium    Large
+
+Red           ✓         ✓         ✗
+Blue          ✓         ✗         ✓
+```
+
+If:
+
+```text
+Red + Large
+```
+
+doesn't exist or is unavailable, the selector must communicate that.
+
+The UI should not merely ask:
+
+> "Does Red have stock?"
+
+It needs to ask:
+
+> "Does any valid active variant exist for Red + the currently selected other options?"
+
+This becomes particularly important with 3+ option groups.
+
+---
+
+# PHASE 7 — Fix Variant Pricing
+
+**Priority: 🔴 CRITICAL**
+
+We currently have:
+
+```text
+variant.price_override ?? product.base_price
+```
+
+in important paths.
+
+That means `sale_price` can be bypassed.
+
+We need one canonical pricing resolver.
+
+For example:
+
+```text
+resolveVariantPrice(product, variant)
+```
+
+with an explicitly chosen precedence.
+
+Likely:
+
+```text
+variant.price_override
+        ↓
+product.sale_price
+        ↓
+product.base_price
+```
+
+if that matches the intended business rules.
+
+Then **every** surface uses that resolver:
+
+```text
+PDP
+Cart
+Checkout
+Payment
+Order
+Email
+JSON-LD
+Admin preview
+```
+
+No component should calculate variant price independently.
+
+---
+
+# PHASE 8 — Fix Currency Handling Around Variants
+
+**Priority: 🔴**
+
+We've already established the project-wide minor-unit convention.
+
+The database stores:
+
+```text
+2020000
+```
+
+while UI display expects:
+
+```text
+20200
+```
+
+through the canonical conversion helper.
+
+We now need to verify the same thing specifically across variant pricing.
+
+The current PDP has already shown why this matters: desktop and mobile price paths have historically handled the same amount differently.
+
+Target:
+
+```text
+DB
+  ↓
+minor units
+  ↓
+canonical money resolver
+  ↓
+major units for Price
+```
+
+Never:
+
+```text
+component-specific / 100
+```
+
+---
+
+# PHASE 9 — Multi-Variant Cart Correctness
+
+**Priority: 🔴 CRITICAL**
+
+The existing cart schema is actually correctly designed for this.
+
+The identity is:
+
+```text
+cart_id + variant_id
+```
+
+rather than:
+
+```text
+cart_id + product_id
+```
+
+which means:
+
+```text
+Red / Small
+Blue / Large
+```
+
+can coexist as separate cart lines.
+
+We need to preserve that.
+
+## Required regression scenario
+
+```text
+T-Shirt
+
+Red / Small × 2
+Blue / Large × 1
+```
+
+Cart must show:
+
+```text
+T-Shirt — Red / Small — 2
+T-Shirt — Blue / Large — 1
+```
+
+not:
+
+```text
+T-Shirt × 3
+```
+
+Then:
+
+* guest cart
+* authenticated cart
+* login merge
+* quantity change
+* removal
+* stale variant
+* inactive variant
+
+must all preserve variant identity.
+
+---
+
+# PHASE 10 — Checkout End-to-End
+
+**Priority: 🔴 CRITICAL**
+
+This is the milestone I would use to declare the variant system fixed.
+
+The test case:
+
+```text
+Product
+ ├── Red / Small   ₦20,000
+ ├── Red / Large   ₦22,000
+ ├── Blue / Small  ₦21,000
+ └── Blue / Large  ₦23,000
+```
+
+Customer purchases:
+
+```text
+Red / Small × 2
+Blue / Large × 1
+```
+
+Expected:
+
+```text
+Subtotal = 2 × ₦20,000 + 1 × ₦23,000
+         = ₦63,000
+```
+
+Then:
+
+```text
+shipping
+ ↓
+grand total
+ ↓
+payment amount
+ ↓
+order
+```
+
+must all agree.
+
+The order must contain the actual variant identities.
+
+---
+
+# PHASE 11 — Order Historical Variant Integrity
+
+**Priority: 🔴/🟠**
+
+This needs special attention.
+
+After purchase, the merchant might change:
+
+```text
+Size → XL
+SKU → NEW-SKU
+price → ₦30,000
+image → new image
+```
+
+The historical order must not change.
+
+We need to verify that the order stores enough immutable information:
+
+```text
+product name snapshot
+variant identity
+SKU snapshot
+option selection snapshot
+unit price snapshot
+quantity
+```
+
+The existing order architecture/RPC should be preserved if it already provides this; we need to verify rather than replace it.
+
+---
+
+# PHASE 12 — Variant Lifecycle + Historical Orders
+
+**Priority: 🟠 HIGH**
+
+This determines whether variants can safely be:
+
+* inactive
+* archived
+* deleted.
+
+Recommended policy:
+
+### Never physically delete a variant that appears in an order.
+
+Instead:
+
+```text
+active
+inactive
+archived
+```
+
+The variant can disappear from the storefront while remaining available to historical orders.
+
+This is especially important because `product_variants.product_id` currently cascades on product deletion at the database level, while the project has deliberately moved toward soft deletion for catalog integrity.
+
+We need to ensure the lifecycle rules don't accidentally destroy historical commerce data.
+
+---
+
+# PHASE 13 — Database Integrity Migration
+
+**Priority: 🔴/🟠**
+
+Only after we understand existing data should we introduce a new migration.
+
+Do **not** modify the historical migrations.
+
+Start with:
+
+```text
+20260904xx_variant_integrity.sql
+```
+
+or the next actual migration number in the repository.
+
+Potential database protections:
+
+* unique variant combination
+* valid product/option relationships
+* exactly one default variant
+* inventory record existence
+* valid inventory quantities
+* SKU rules
+* relevant indexes.
+
+But we should only introduce constraints that PostgreSQL can correctly enforce.
+
+JSONB uniqueness needs particular care.
+
+We shouldn't pretend that a naïve:
+
+```sql
+UNIQUE(option_combination)
+```
+
+is enough if JSON representations can differ semantically.
+
+---
+
+# PHASE 14 — SEO Infrastructure
+
+Now we move to SEO.
+
+The good news is that the foundation exists.
+
+`config/seo.ts` already provides:
+
+* `metadataBase`
+* title template
+* description
+* Open Graph
+* Twitter
+* robots.
+
+And the product page already has dynamic metadata, canonical URLs, ISR, and JSON-LD.
+
+So:
+
+> **Do not install another SEO system.**
+
+Complete the existing one.
+
+---
+
+# PHASE 15 — Production SEO Environment Policy
+
+**Priority: 🔴**
+
+Current:
+
+```text
+robots:
+  index: false
+  follow: false
+```
+
+This is appropriate for development but cannot remain the production policy.
+
+We need environment-aware behavior:
+
+### Development/staging
+
+```text
+noindex
+nofollow
+```
+
+### Production
+
+```text
+index
+follow
+```
+
+with appropriate protections for private routes.
+
+---
+
+# PHASE 16 — Sitemap
+
+**Priority: 🔴**
+
+There is no sitemap implementation in the current repository structure.
+
+We need:
+
+```text
+/sitemap.xml
+```
+
+eventually containing indexable:
+
+* homepage
+* published products
+* indexable categories
+* collections if exposed publicly.
+
+Not:
+
+* checkout
+* account
+* admin
+* orders
+* drafts
+* archived products
+* deleted products
+* arbitrary filters.
+
+This should be generated dynamically from the same data source used by the storefront.
+
+---
+
+# PHASE 17 — Robots
+
+**Priority: 🔴**
+
+Implement the actual robots policy.
+
+Conceptually:
+
+```text
+User-agent: *
+Allow: /
+
+Disallow: /admin/
+Disallow: /account/
+Disallow: /checkout/
+Disallow: /orders/
+
+Sitemap: https://store-domain.com/sitemap.xml
+```
+
+But this needs to match the actual route tree.
+
+We should not rely on robots alone for security; these routes are already protected at the application layer.
+
+Robots is an indexing/crawling policy, not an access-control mechanism.
+
+---
+
+# PHASE 18 — Product SEO Metadata
+
+**Priority: 🟠**
+
+The current PDP already does:
+
+```text
+seo_title || product.name
+seo_description || product.description
+canonical
+OG
+Twitter
+```
+
+which is a good foundation.
+
+We should centralize this eventually:
+
+```text
+buildProductMetadata(product)
+```
+
+so that the rules don't live directly inside the page.
+
+That will make Commerce Kit easier to configure for different merchants.
+
+---
+
+# PHASE 19 — Variant SEO Architecture
+
+**Priority: 🔴**
+
+This is where the variant work and SEO work meet.
+
+The current PDP already accepts:
+
+```text
+/products/[slug]?variant=<variant>
+```
+
+but `generateMetadata()` only receives/uses the slug, not the variant parameter.
+
+We need to decide the canonical strategy.
+
+### Recommended architecture
+
+Keep:
+
+```text
+/products/black-shirt
+```
+
+as the canonical product URL.
+
+Allow:
+
+```text
+/products/black-shirt?variant=<variant-id>
+```
+
+to preselect a variant.
+
+This fits the current single-page variant architecture and avoids generating thousands of independent URLs.
+
+But the variant URL must actually render:
+
+* correct selected options
+* correct image
+* correct price
+* correct availability
+* correct SKU
+* correct purchasability.
+
+And the structured data must describe the variant family properly.
+
+---
+
+# PHASE 20 — ProductGroup Structured Data
+
+**Priority: 🔴**
+
+Current JSON-LD is essentially:
+
+```text
+Product
+ └── Offer
+```
+
+and explicitly chooses the default variant.
+
+That is not sufficient for a serious multi-variant commerce framework.
+
+Target architecture should investigate:
+
+```text
+ProductGroup
+ ├── Product — Red/Small
+ │     └── Offer
+ ├── Product — Red/Large
+ │     └── Offer
+ ├── Product — Blue/Small
+ │     └── Offer
+ └── Product — Blue/Large
+       └── Offer
+```
+
+with appropriate:
+
+```text
+productGroupID
+variesBy
+hasVariant
+```
+
+and each variant carrying its own:
+
+* SKU
+* image
+* price
+* availability
+* URL.
+
+This is one of the most important SEO changes.
+
+---
+
+# PHASE 21 — Variant Structured Data Must Use the Same Domain Resolver
+
+This is crucial.
+
+We must **not** create separate SEO-specific variant calculations.
+
+If:
+
+```text
+resolveVariantPrice()
+```
+
+says:
+
+```text ₦23,000
+```
+
+then:
+
+* PDP = ₦23,000
+* cart = ₦23,000
+* checkout = ₦23,000
+* payment = ₦23,000
+* order = ₦23,000
+* JSON-LD = ₦23,000
+
+Same source of truth.
+
+Likewise for availability.
+
+---
+
+# PHASE 22 — Category SEO
+
+**Priority: 🟠**
+
+Current category metadata is too generic.
+
+Categories currently have:
+
+```text
+name
+slug
+description
+```
+
+but not a proper SEO configuration model.
+
+We should eventually support:
+
+```text
+seo_title
+seo_description
+```
+
+possibly:
+
+```text
+og_image
+```
+
+depending on the desired framework scope.
+
+But we should only add DB fields if we decide category SEO is a first-class merchant capability.
+
+I think it should be.
+
+---
+
+# PHASE 23 — Catalog/FILTER SEO Policy
+
+**Priority: 🟠**
+
+Current catalog supports:
+
+```text
+category
+featured
+sort
+minPrice
+maxPrice
+q
+pagination
+```
+
+We need an explicit policy.
+
+For example:
+
+### Index
+
+```text
+/catalog
+/catalog?category=shoes
+```
+
+if category landing pages are intentionally indexable.
+
+### Noindex/canonical
+
+```text
+/catalog?sort=price-asc
+/catalog?min=10000&max=20000
+/catalog?q=red
+```
+
+depending on the final strategy.
+
+The current blanket canonicalization to `/catalog` is not necessarily wrong, but we need to make it intentional rather than incidental.
+
+---
+
+# PHASE 24 — Search SEO
+
+**Priority: 🟡**
+
+Internal product search should generally not become a giant collection of indexable URLs.
+
+We need to make sure:
+
+```text
+/catalog?q=iphone
+```
+
+doesn't create thousands of crawlable search-result pages.
+
+The actual product pages remain indexable.
+
+---
+
+# PHASE 25 — Image SEO
+
+**Priority: 🟡**
+
+Audit:
+
+* product image alt text
+* primary images
+* variant images
+* OG images
+* image URLs
+* image dimensions
+* image accessibility.
+
+There is already an `alt_text` field in `product_images`, so the database foundation exists.
+
+We should connect it consistently to:
+
+```text
+<img>
+OG
+Product JSON-LD
+variant structured data
+```
+
+where appropriate.
+
+---
+
+# PHASE 26 — SEO Rendering Strategy
+
+**Priority: 🟠**
+
+The product page already uses:
+
+```text
+revalidate = 3600
+generateStaticParams()
+```
+
+and server-rendered metadata.
+
+That is good.
+
+We should preserve it.
+
+The fact that only 20 products are included in `generateStaticParams()` is **not automatically a bug**.
+
+We should instead verify that:
+
+```text
+all other products
+       ↓
+ISR / on-demand rendering
+       ↓
+crawlable HTML
+```
+
+works correctly.
+
+Don't pre-render every product at build time simply because it sounds more SEO-friendly.
+
+---
+
+# PHASE 27 — SEO Route Classification
+
+We should create a definitive table:
+
+| Route                |            Index |           Follow | Sitemap |
+| -------------------- | ---------------: | ---------------: | ------: |
+| `/`                  |              Yes |              Yes |     Yes |
+| `/catalog`           |              Yes |              Yes |     Yes |
+| `/products/[slug]`   |              Yes |              Yes |     Yes |
+| `/categories/[slug]` |              Yes |              Yes |     Yes |
+| `/checkout`          |               No |               No |      No |
+| `/account`           |               No |               No |      No |
+| `/orders`            |               No |               No |      No |
+| `/admin/*`           |               No |               No |      No |
+| internal search      |       Usually No |           No/Yes |      No |
+| faceted filters      | Policy-dependent | Policy-dependent |      No |
+
+This becomes the SEO contract for the framework.
+
+---
+
+# PHASE 28 — Testing Infrastructure
+
+This is where I want us to be particularly strict.
+
+We shouldn't finish these changes with:
+
+```text
+npm run build
+```
+
+alone.
+
+We need actual variant regression tests.
+
+## Test group 1 — Simple product
+
+```text
+one product
+one variant
+one inventory
+```
+
+must checkout.
+
+## Test group 2 — Size
+
+```text
+S
+M
+L
+```
+
+all checkout independently.
+
+## Test group 3 — Color
+
+```text
+Red
+Blue
+```
+
+all checkout independently.
+
+## Test group 4 — Size + Color
+
+```text
+S/Red
+S/Blue
+M/Red
+M/Blue
+L/Red
+L/Blue
+```
+
+all work.
+
+## Test group 5 — unavailable combination
+
+```text
+M/Blue
+```
+
+inactive/out-of-stock.
+
+Must not be purchasable.
+
+## Test group 6 — mixed checkout
+
+```text
+S/Red × 2
+L/Blue × 1
+```
+
+must create two order lines.
+
+## Test group 7 — guest cart
+
+Same scenario as above.
+
+## Test group 8 — login merge
+
+Same scenario before login → merge → checkout.
+
+## Test group 9 — price
+
+Different variant prices must survive:
+
+```text
+PDP
+Cart
+Checkout
+Payment
+Order
+Email
+JSON-LD
+```
+
+## Test group 10 — inventory
+
+```text
+stock = 5
+purchase = 3
+reservation = 3
+available = 2
+```
+
+Then concurrent reservation tests.
+
+---
+
+# PHASE 29 — SEO Automated Verification
+
+We should eventually have an SEO verification script that can inspect generated/rendered output.
+
+For a published product:
+
+### HTML
+
+Verify:
+
+```text
+<title>
+<meta name="description">
+<link rel="canonical">
+og:title
+og:description
+og:image
+twitter:card
+```
+
+### JSON-LD
+
+Verify:
+
+```text
+@context
+@type
+ProductGroup
+variants
+offers
+price
+currency
+availability
+SKU
+URL
+```
+
+### Infrastructure
+
+Verify:
+
+```text
+robots.txt
+sitemap.xml
+```
+
+### Negative routes
+
+Verify private routes aren't accidentally indexable.
+
+---
+
+# PHASE 30 — Final Regression Against Existing Commerce Architecture
+
+Before declaring this complete, we re-run the broader Commerce Kit invariants we've already established.
+
+That means variant work cannot break:
+
+* guest cart token architecture
+* RLS
+* authenticated cart
+* customer synchronization
+* saved addresses
+* shipping
+* Paystack/Flutterwave
+* order creation
+* notifications
+* currency handling
+* admin permissions
+* product archival/deletion.
+
+The existing guest cart architecture, for example, deliberately uses the opaque `cart_token` and its server-side hash rather than exposing the raw cart ID. We must not regress that while changing cart/variant behavior.
+
+---
+
+# Recommended implementation order
+
+This is the sequence I recommend we actually follow.
+
+### Phase V1 — Variant Domain Integrity
+
+**🔴 Critical**
+
+1. Define canonical variant combination model.
+2. Define simple vs configurable product rules.
+3. Define default variant invariant.
+4. Define inventory invariant.
+5. Define lifecycle rules.
+6. Add required database constraints/indexes.
+
+### Phase V2 — Variant Generation
+
+**🔴 Critical**
+
+7. Build combination generator.
+8. Create variants atomically.
+9. Create inventory alongside variants.
+10. Prevent duplicate combinations.
+11. Handle option/value additions.
+12. Handle option/value removals safely.
+
+### Phase V3 — Variant Selector
+
+**🔴 Critical**
+
+13. Build canonical combination resolver.
+14. Remove partial-match fallback behavior.
+15. Build availability matrix.
+16. Fix URL synchronization.
+17. Fix variant image switching.
+18. Fix variant price switching.
+19. Fix mobile/desktop price consistency.
+
+### Phase V4 — Cart + Inventory
+
+**🔴 Critical**
+
+20. Enforce variant → inventory invariant.
+21. Fix stock interpretation.
+22. Make reservation atomic.
+23. Handle reservation expiry.
+24. Handle concurrent reservations.
+25. Verify guest cart.
+26. Verify authenticated cart.
+27. Verify guest-cart merge.
+
+### Phase V5 — Checkout + Orders
+
+**🔴 Critical**
+
+28. Multi-variant checkout.
+29. Mixed variant quantities.
+30. Price authority.
+31. Payment amount authority.
+32. Order variant snapshots.
+33. Inventory deduction.
+34. Reservation conversion.
+35. Failure/recovery paths.
+
+### Phase V6 — Variant Regression Suite
+
+**🔴 Critical**
+
+36. Automated simple-product tests.
+37. Single-option tests.
+38. Multi-option tests.
+39. Three-option tests.
+40. Inventory tests.
+41. concurrent checkout tests.
+42. cart merge tests.
+43. order integrity tests.
+
+---
+
+# Then SEO
+
+### Phase S1 — SEO Infrastructure
+
+**🔴**
+
+44. Environment-aware indexing.
+45. Production `robots.txt`.
+46. Dynamic sitemap.
+47. Route indexability policy.
+48. Production canonical domain validation.
+
+### Phase S2 — Product SEO
+
+**🔴**
+
+49. Centralize product metadata.
+50. Validate canonical URLs.
+51. Validate OG/Twitter.
+52. Variant URL strategy.
+53. ProductGroup structured data.
+54. Variant Offer structured data.
+
+### Phase S3 — Catalog SEO
+
+**🟠**
+
+55. Category SEO metadata.
+56. Category canonical policy.
+57. Faceted navigation policy.
+58. Search URL policy.
+59. Pagination policy.
+
+### Phase S4 — SEO Quality
+
+**🟡**
+
+60. Image alt text.
+61. Breadcrumb structured data.
+62. Organization/site structured data where appropriate.
+63. Merchant/shipping/return structured data where supported and accurate.
+64. Rendering/ISR audit.
+65. Automated SEO verification.
+
+---
+
+# One thing I would change from the earlier plan
+
+I **would not make "SEO" the next thing we implement immediately.**
+
+The correct order is:
+
+```text
+VARIANT DOMAIN
+      ↓
+VARIANT GENERATION
+      ↓
+VARIANT + INVENTORY
+      ↓
+CART
+      ↓
+CHECKOUT
+      ↓
+ORDER
+      ↓
+REGRESSION TESTS
+      ↓
+SEO INFRASTRUCTURE
+      ↓
+VARIANT SEO
+      ↓
+FINAL SEO TESTS
+```
+
+Because SEO needs to describe the **real product/variant domain**.
+
+If we implement ProductGroup structured data before the variant model is stable, we're likely to build SEO around assumptions that we subsequently change.
+
+---
+
+# The architecture we should end up with
+
+The most important end state is this:
+
+```text
+                         PRODUCT
+                            │
+                 ┌──────────┴──────────┐
+                 │                     │
+          OPTION GROUPS            PRODUCT DATA
+                 │
+          OPTION VALUES
+                 │
+                 ▼
+             VARIANT
+                 │
+       ┌─────────┼─────────┐
+       │         │         │
+      SKU      PRICE     IMAGE
+       │         │         │
+       └─────────┼─────────┘
+                 │
+             INVENTORY
+                 │
+                 ▼
+               CART
+                 │
+                 ▼
+             CHECKOUT
+                 │
+          RESERVATION
+                 │
+                 ▼
+              PAYMENT
+                 │
+                 ▼
+               ORDER
+                 │
+                 └──────────────┐
+                                │
+                                ▼
+                           HISTORICAL
+                           SNAPSHOT
+
+
+PRODUCT
+   │
+   ├── canonical URL
+   ├── metadata
+   ├── ProductGroup
+   │
+   └── VARIANTS
+          ├── SKU
+          ├── URL state
+          ├── image
+          ├── price
+          ├── availability
+          └── Offer
+```
+
+**One domain model. Multiple consumers.**
+
+That is the key architectural correction.
+
+---
+
+## What I consider the immediate blockers
+
+If we're going to work on this together incrementally, I would mark these as our **first five implementation checkpoints**:
+
+### 🔴 1. Variant + inventory invariant
+
+Every active purchasable variant has exactly one inventory record.
+
+### 🔴 2. Variant combination engine
+
+`Size × Color × ...` produces deterministic, unique variants.
+
+### 🔴 3. Canonical variant resolver
+
+Every UI selection maps to exactly one variant or no variant.
+
+### 🔴 4. Atomic multi-variant checkout
+
+Multiple variants from the same product can reserve, pay and become order lines correctly.
+
+### 🔴 5. Canonical variant pricing
+
+One pricing resolver feeds PDP → cart → checkout → payment → order → SEO.
+
+Once those five are solid, **then** we build the SEO layer on top of them.
+
+The current code confirms why this ordering matters: `products.ts` already fetches variants together with their inventory, `product-service.ts` creates the default variant/inventory pair, and `inventory-service.ts` is already the central reservation service. We're therefore extending the existing boundaries rather than introducing a new commerce architecture.
+
+And yes: **when we start implementation, I will re-check the repository before and after each phase**. I won't simply assume that an implementation agent followed this roadmap. For each phase we'll verify the actual changed files, database migration, call paths, invariants, regression behavior, and whether the fix introduced drift elsewhere.
+
+This becomes our **master roadmap for the Variant + SEO hardening phase**.
+
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-09-04T20:50:08+01:00.
+
+The user's current state is as follows:
+Active Document: c:\Users\Sivvy\Websites\Next.JS websites\Sivvai_Labs Social Commerce Kit\sivvai_labs_commerce_kit\scripts\verify-phase5-3.ts (LANGUAGE_TYPESCRIPT)
+Cursor is on line: 449
+Other open documents:
+- c:\Users\Sivvy\Websites\Next.JS websites\Sivvai_Labs Social Commerce Kit\sivvai_labs_commerce_kit\services\admin-invitations-service.ts (LANGUAGE_TYPESCRIPT)
+- c:\Users\Sivvy\Websites\Next.JS websites\Sivvai_Labs Social Commerce Kit\sivvai_labs_commerce_kit\scripts\verify-phase5-2.ts (LANGUAGE_TYPESCRIPT)
+- c:\Users\Sivvy\Websites\Next.JS websites\Sivvai_Labs Social Commerce Kit\sivvai_labs_commerce_kit\supabase\migrations\20260902047_atomic_admin_invitation_acceptance.sql (LANGUAGE_UNSPECIFIED)
+- c:\Users\Sivvy\Websites\Next.JS websites\Sivvai_Labs Social Commerce Kit\sivvai_labs_commerce_kit\app\admin\(protected)\products\page.tsx (LANGUAGE_TSX)
+- c:\Users\Sivvy\Websites\Next.JS websites\Sivvai_Labs Social Commerce Kit\sivvai_labs_commerce_kit\.env.local (LANGUAGE_UNSPECIFIED)
+No browser pages are currently open.
+Running terminal commands:
+- npm run dev (in c:\Users\Sivvy\Websites\Next.JS websites\Sivvai_Labs Social Commerce Kit\sivvai_labs_commerce_kit, running for 35h50m22s)
+</ADDITIONAL_METADATA>
+<USER_SETTINGS_CHANGE>
+The user changed setting `Model Selection` from None to Gemini 3.8 Flash (Medium). No need to comment on this change if the user doesn't ask about it. If reporting what model you are, please use a human readable name instead of the exact string.
+</USER_SETTINGS_CHANGE>
