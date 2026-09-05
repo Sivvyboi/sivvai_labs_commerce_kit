@@ -40,6 +40,7 @@ import {
   syncProductVariantsAction,
   setDefaultVariantAction,
   toggleVariantStatusAction,
+  setVariantStockAction,
 } from "@/features/admin/actions/product.actions";
 import { formatCombinationLabel, generateCartesianCombinations } from "@/lib/variants/combination";
 
@@ -1028,19 +1029,31 @@ function VariantRow({
 
   const inv = Array.isArray(variant.inventory) ? variant.inventory[0] : variant.inventory;
   const stock = inv?.on_hand_quantity ?? 0;
+  const [stockQty, setStockQty] = React.useState(stock);
 
   async function handleSaveVariant() {
     const overrideKobo = overridePrice ? Math.round(Number(overridePrice) * 100) : null;
-    await execute(() =>
-      updateVariantAction(
-        {
-          id: variant.id,
-          sku: sku || null,
-          price_override: overrideKobo,
-        },
-        productId
-      )
-    );
+    const saves: Promise<unknown>[] = [
+      execute(() =>
+        updateVariantAction(
+          {
+            id: variant.id,
+            sku: sku || null,
+            price_override: overrideKobo,
+          },
+          productId
+        )
+      ),
+    ];
+    // Only call the stock action if the quantity has actually changed and we have a record id
+    if (inv?.id && stockQty !== stock) {
+      saves.push(
+        execute(() =>
+          setVariantStockAction(variant.id, inv.id, stockQty, productId)
+        )
+      );
+    }
+    await Promise.all(saves);
   }
 
   async function handleSetDefault() {
@@ -1091,9 +1104,17 @@ function VariantRow({
           {variant.status === "active" ? "Active" : "Inactive"}
         </button>
 
-        <span className="text-xs text-[var(--kit-text-muted)] font-mono">
-          Stock: {stock}
-        </span>
+        <div className="flex items-center gap-1 text-xs text-[var(--kit-text-muted)] font-mono">
+          <span>Stock:</span>
+          <input
+            type="number"
+            min={0}
+            step={1}
+            value={stockQty}
+            onChange={(e) => setStockQty(Math.max(0, Math.floor(Number(e.target.value))))}
+            className="h-6 w-16 rounded border border-[var(--kit-border)] bg-[var(--kit-card)] px-1.5 text-xs font-mono text-[var(--kit-text-primary)] text-center"
+          />
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-2 sm:justify-end">

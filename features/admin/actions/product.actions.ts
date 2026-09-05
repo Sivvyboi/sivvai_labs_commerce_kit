@@ -11,6 +11,7 @@ import { requirePermission } from "@/lib/auth/admin-guard";
 import { logAuditEvent } from "@/services/authz-service";
 
 import * as productService from "@/services/product-service";
+import { manualInventoryAdjustment } from "@/services/inventory-service";
 import {
   CreateProductAdminSchema,
   UpdateProductAdminSchema,
@@ -549,4 +550,33 @@ export async function toggleVariantStatusAction(
   }
 }
 
-
+export async function setVariantStockAction(
+  variantId: string,
+  inventoryRecordId: string,
+  newQuantity: number,
+  productId?: string
+) {
+  try {
+    await requirePermission("manage_products");
+    if (!Number.isInteger(newQuantity) || newQuantity < 0) {
+      return { success: false, error: "Stock quantity must be a non-negative integer" };
+    }
+    const updated = await manualInventoryAdjustment({
+      inventoryRecordId,
+      variantId,
+      newQuantity,
+      reason: "admin_manual",
+    });
+    revalidateTag("catalog", "default");
+    revalidatePath("/", "layout");
+    if (productId) {
+      revalidatePath(`/admin/products/${productId}`);
+    }
+    return { success: true, inventory: updated };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to update stock",
+    };
+  }
+}
