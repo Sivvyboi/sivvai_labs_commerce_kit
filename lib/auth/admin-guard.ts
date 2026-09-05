@@ -37,7 +37,9 @@ export async function requirePermission(permission: string): Promise<AdminContex
   const hasPerm =
     ctx.permissions.includes(permission) ||
     (permission === "view_orders" && ctx.permissions.includes("manage_orders")) ||
-    (permission === "view_customers" && ctx.permissions.includes("manage_customers"));
+    (permission === "view_customers" && ctx.permissions.includes("manage_customers")) ||
+    (permission === "view_products" && ctx.permissions.includes("manage_products")) ||
+    (permission === "view_inventory" && ctx.permissions.includes("manage_inventory"));
 
   if (!hasPerm) {
     throw new ForbiddenError(`Missing required permission: ${permission}`);
@@ -60,7 +62,9 @@ export async function requirePermissionPage(permission: string): Promise<AdminCo
   const hasPerm =
     ctx.permissions.includes(permission) ||
     (permission === "view_orders" && ctx.permissions.includes("manage_orders")) ||
-    (permission === "view_customers" && ctx.permissions.includes("manage_customers"));
+    (permission === "view_customers" && ctx.permissions.includes("manage_customers")) ||
+    (permission === "view_products" && ctx.permissions.includes("manage_products")) ||
+    (permission === "view_inventory" && ctx.permissions.includes("manage_inventory"));
 
   if (!hasPerm) {
     redirect("/admin/forbidden");

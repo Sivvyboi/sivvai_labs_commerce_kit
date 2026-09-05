@@ -261,7 +261,9 @@ export async function checkPermission(permission: string): Promise<boolean> {
   return (
     ctx.permissions.includes(permission) ||
     (permission === "view_orders" && ctx.permissions.includes("manage_orders")) ||
-    (permission === "view_customers" && ctx.permissions.includes("manage_customers"))
+    (permission === "view_customers" && ctx.permissions.includes("manage_customers")) ||
+    (permission === "view_products" && ctx.permissions.includes("manage_products")) ||
+    (permission === "view_inventory" && ctx.permissions.includes("manage_inventory"))
   );
 }
 

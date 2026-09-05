@@ -25,7 +25,8 @@ interface AdminInventoryPageProps {
 }
 
 export default async function AdminInventoryPage({ searchParams }: AdminInventoryPageProps) {
-  await requirePermissionPage("manage_inventory");
+  const ctx = await requirePermissionPage("view_inventory");
+  const canManage = ctx.permissions.includes("manage_inventory");
   const params = await searchParams;
   const filterLowStock = params.lowStock === "true";
 
@@ -77,7 +78,7 @@ export default async function AdminInventoryPage({ searchParams }: AdminInventor
           {filterLowStock ? "No items with low stock!" : "No inventory records found."}
         </div>
       ) : (
-        <InventoryTable items={items} />
+        <InventoryTable items={items} canManage={canManage} />
       )}
     </div>
   );

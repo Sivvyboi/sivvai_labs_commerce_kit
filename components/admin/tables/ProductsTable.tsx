@@ -27,13 +27,14 @@ import type { ProductWithDetails } from "@/lib/db/products";
 
 interface ProductsTableProps {
   products: ProductWithDetails[];
+  canManage?: boolean;
 }
 
 function formatPrice(kobo: number): string {
   return `₦${(kobo / 100).toLocaleString("en-NG")}`;
 }
 
-export function ProductsTable({ products }: ProductsTableProps) {
+export function ProductsTable({ products, canManage = true }: ProductsTableProps) {
   const { execute, loading, error, clearError } = useAdmin();
   const [archiveTarget, setArchiveTarget] = React.useState<string | null>(null);
 
@@ -161,76 +162,80 @@ export function ProductsTable({ products }: ProductsTableProps) {
                         <Eye size={14} />
                       </Link>
 
-                      {/* Edit */}
-                      <Link
-                        href={`/admin/products/${product.id}`}
-                        title="Edit product"
-                        className="flex h-8 w-8 items-center justify-center rounded-[var(--kit-radius-md)] text-[var(--kit-text-muted)] hover:bg-[var(--kit-muted)] hover:text-[var(--kit-text-primary)] transition-colors"
-                      >
-                        <Edit size={14} />
-                      </Link>
+                      {canManage && (
+                        <>
+                          {/* Edit */}
+                          <Link
+                            href={`/admin/products/${product.id}`}
+                            title="Edit product"
+                            className="flex h-8 w-8 items-center justify-center rounded-[var(--kit-radius-md)] text-[var(--kit-text-muted)] hover:bg-[var(--kit-muted)] hover:text-[var(--kit-text-primary)] transition-colors"
+                          >
+                            <Edit size={14} />
+                          </Link>
 
-                      {/* Publish (if draft) */}
-                      {product.status === "draft" && (
-                        <button
-                          type="button"
-                          onClick={() => handlePublish(product.id)}
-                          disabled={loading}
-                          title="Publish product"
-                          className="flex h-8 w-8 items-center justify-center rounded-[var(--kit-radius-md)] text-[var(--kit-success)] hover:bg-[var(--kit-success)]/10 transition-colors"
-                        >
-                          <CheckCircle size={14} />
-                        </button>
-                      )}
+                          {/* Publish (if draft) */}
+                          {product.status === "draft" && (
+                            <button
+                              type="button"
+                              onClick={() => handlePublish(product.id)}
+                              disabled={loading}
+                              title="Publish product"
+                              className="flex h-8 w-8 items-center justify-center rounded-[var(--kit-radius-md)] text-[var(--kit-success)] hover:bg-[var(--kit-success)]/10 transition-colors"
+                            >
+                              <CheckCircle size={14} />
+                            </button>
+                          )}
 
-                      {/* Unpublish (if published) */}
-                      {product.status === "published" && (
-                        <button
-                          type="button"
-                          onClick={() => handleUnpublish(product.id)}
-                          disabled={loading}
-                          title="Unpublish product (set to draft)"
-                          className="flex h-8 w-8 items-center justify-center rounded-[var(--kit-radius-md)] text-[var(--kit-warning)] hover:bg-[var(--kit-warning)]/10 transition-colors"
-                        >
-                          <EyeOff size={14} />
-                        </button>
-                      )}
+                          {/* Unpublish (if published) */}
+                          {product.status === "published" && (
+                            <button
+                              type="button"
+                              onClick={() => handleUnpublish(product.id)}
+                              disabled={loading}
+                              title="Unpublish product (set to draft)"
+                              className="flex h-8 w-8 items-center justify-center rounded-[var(--kit-radius-md)] text-[var(--kit-warning)] hover:bg-[var(--kit-warning)]/10 transition-colors"
+                            >
+                              <EyeOff size={14} />
+                            </button>
+                          )}
 
-                      {/* Duplicate */}
-                      <button
-                        type="button"
-                        onClick={() => handleDuplicate(product.id)}
-                        disabled={loading}
-                        title="Duplicate product"
-                        className="flex h-8 w-8 items-center justify-center rounded-[var(--kit-radius-md)] text-[var(--kit-text-muted)] hover:bg-[var(--kit-muted)] hover:text-[var(--kit-text-primary)] transition-colors"
-                      >
-                        <Copy size={14} />
-                      </button>
+                          {/* Duplicate */}
+                          <button
+                            type="button"
+                            onClick={() => handleDuplicate(product.id)}
+                            disabled={loading}
+                            title="Duplicate product"
+                            className="flex h-8 w-8 items-center justify-center rounded-[var(--kit-radius-md)] text-[var(--kit-text-muted)] hover:bg-[var(--kit-muted)] hover:text-[var(--kit-text-primary)] transition-colors"
+                          >
+                            <Copy size={14} />
+                          </button>
 
-                      {/* Archive (non-archived products) */}
-                      {product.status !== "archived" && (
-                        <button
-                          type="button"
-                          onClick={() => setArchiveTarget(product.id)}
-                          disabled={loading}
-                          title="Archive product"
-                          className="flex h-8 w-8 items-center justify-center rounded-[var(--kit-radius-md)] text-[var(--kit-danger)] hover:bg-[var(--kit-danger)]/10 transition-colors"
-                        >
-                          <Archive size={14} />
-                        </button>
-                      )}
+                          {/* Archive (non-archived products) */}
+                          {product.status !== "archived" && (
+                            <button
+                              type="button"
+                              onClick={() => setArchiveTarget(product.id)}
+                              disabled={loading}
+                              title="Archive product"
+                              className="flex h-8 w-8 items-center justify-center rounded-[var(--kit-radius-md)] text-[var(--kit-danger)] hover:bg-[var(--kit-danger)]/10 transition-colors"
+                            >
+                              <Archive size={14} />
+                            </button>
+                          )}
 
-                      {/* Restore (archived products only) */}
-                      {product.status === "archived" && (
-                        <button
-                          type="button"
-                          onClick={() => handleRestore(product.id)}
-                          disabled={loading}
-                          title="Restore to draft"
-                          className="flex h-8 w-8 items-center justify-center rounded-[var(--kit-radius-md)] text-[var(--kit-success)] hover:bg-[var(--kit-success)]/10 transition-colors"
-                        >
-                          <RotateCcw size={14} />
-                        </button>
+                          {/* Restore (archived products only) */}
+                          {product.status === "archived" && (
+                            <button
+                              type="button"
+                              onClick={() => handleRestore(product.id)}
+                              disabled={loading}
+                              title="Restore to draft"
+                              className="flex h-8 w-8 items-center justify-center rounded-[var(--kit-radius-md)] text-[var(--kit-success)] hover:bg-[var(--kit-success)]/10 transition-colors"
+                            >
+                              <RotateCcw size={14} />
+                            </button>
+                          )}
+                        </>
                       )}
                     </div>
                   </td>

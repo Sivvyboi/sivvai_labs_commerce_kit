@@ -36,9 +36,9 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     label: "Catalog",
     items: [
-      { label: "Products", href: "/admin/products", icon: Package, permission: "manage_products" },
+      { label: "Products", href: "/admin/products", icon: Package, permission: "view_products" },
       { label: "Categories", href: "/admin/categories", icon: FolderOpen, permission: "manage_categories" },
-      { label: "Inventory", href: "/admin/inventory", icon: Warehouse, permission: "manage_inventory" },
+      { label: "Inventory", href: "/admin/inventory", icon: Warehouse, permission: "view_inventory" },
     ],
   },
   {
@@ -77,6 +77,8 @@ export function filterNavGroups(groups: NavGroup[], permissions: string[]): NavG
         // Permissive read mapping for view_ vs manage_
         if (item.permission === "view_orders" && permissions.includes("manage_orders")) return true;
         if (item.permission === "view_customers" && permissions.includes("manage_customers")) return true;
+        if (item.permission === "view_products" && permissions.includes("manage_products")) return true;
+        if (item.permission === "view_inventory" && permissions.includes("manage_inventory")) return true;
         return false;
       });
 

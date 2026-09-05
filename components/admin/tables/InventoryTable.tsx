@@ -32,9 +32,10 @@ import type { InventoryWithVariant, InventoryReservationRow } from "@/lib/db/inv
 
 interface InventoryTableProps {
   items: InventoryWithVariant[];
+  canManage?: boolean;
 }
 
-export function InventoryTable({ items }: InventoryTableProps) {
+export function InventoryTable({ items, canManage = true }: InventoryTableProps) {
   const { execute, loading, error, clearError } = useAdmin();
 
   // Manual adjustment modal target
@@ -239,7 +240,15 @@ export function InventoryTable({ items }: InventoryTableProps) {
                         "hover:bg-[var(--kit-muted)] hover:text-[var(--kit-text-primary)] transition-colors"
                       )}
                     >
-                      <Edit2 size={12} /> Adjust
+                      {canManage ? (
+                        <>
+                          <Edit2 size={12} /> Adjust
+                        </>
+                      ) : (
+                        <>
+                          <Package size={12} /> View
+                        </>
+                      )}
                     </button>
                   </td>
                 </tr>
@@ -264,7 +273,7 @@ export function InventoryTable({ items }: InventoryTableProps) {
           <div className="flex items-start justify-between">
             <div>
               <h2 className="text-base font-semibold text-[var(--kit-text-primary)]">
-                Inventory &amp; Reservation Details
+                {canManage ? "Inventory & Reservation Details" : "Inventory Details (Read-Only)"}
               </h2>
               <p className="mt-0.5 text-xs text-[var(--kit-text-secondary)]">
                 {modalTarget.variant?.product?.name} (SKU: {modalTarget.variant?.sku ?? "—"})
@@ -316,69 +325,77 @@ export function InventoryTable({ items }: InventoryTableProps) {
           )}
 
           {/* Section 1: Physical Stock Level Adjustment */}
-          <div className="mt-5 border-t border-[var(--kit-border)] pt-4">
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--kit-text-muted)]">
-              Physical Stock Adjustment
-            </h3>
+          {canManage ? (
+            <div className="mt-5 border-t border-[var(--kit-border)] pt-4">
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--kit-text-muted)]">
+                Physical Stock Adjustment
+              </h3>
 
-            <form onSubmit={handleSaveAdjustment} className="mt-3 space-y-3">
-              <div>
-                <label
-                  htmlFor="modal-new-qty-input"
-                  className="block text-xs font-medium text-[var(--kit-text-secondary)]"
-                >
-                  New Physical On-Hand Quantity
-                </label>
-                <input
-                  id="modal-new-qty-input"
-                  type="number"
-                  min="0"
-                  value={newQty}
-                  onChange={(e) => setNewQty(Number(e.target.value))}
-                  required
-                  className={clsx(
-                    "mt-1 h-9 w-full rounded-[var(--kit-radius-md)] border border-[var(--kit-border)]",
-                    "bg-[var(--kit-surface)] px-3 text-sm text-[var(--kit-text-primary)]",
-                    "focus:border-[var(--kit-accent)] focus:outline-none"
-                  )}
-                />
-              </div>
+              <form onSubmit={handleSaveAdjustment} className="mt-3 space-y-3">
+                <div>
+                  <label
+                    htmlFor="modal-new-qty-input"
+                    className="block text-xs font-medium text-[var(--kit-text-secondary)]"
+                  >
+                    New Physical On-Hand Quantity
+                  </label>
+                  <input
+                    id="modal-new-qty-input"
+                    type="number"
+                    min="0"
+                    value={newQty}
+                    onChange={(e) => setNewQty(Number(e.target.value))}
+                    required
+                    className={clsx(
+                      "mt-1 h-9 w-full rounded-[var(--kit-radius-md)] border border-[var(--kit-border)]",
+                      "bg-[var(--kit-surface)] px-3 text-sm text-[var(--kit-text-primary)]",
+                      "focus:border-[var(--kit-accent)] focus:outline-none"
+                    )}
+                  />
+                </div>
 
-              <div>
-                <label
-                  htmlFor="modal-reason-select"
-                  className="block text-xs font-medium text-[var(--kit-text-secondary)]"
-                >
-                  Adjustment Reason
-                </label>
-                <select
-                  id="modal-reason-select"
-                  value={reason}
-                  onChange={(e) => setReason(e.target.value)}
-                  className={clsx(
-                    "mt-1 h-9 w-full rounded-[var(--kit-radius-md)] border border-[var(--kit-border)]",
-                    "bg-[var(--kit-surface)] px-3 text-sm text-[var(--kit-text-primary)]",
-                    "focus:border-[var(--kit-accent)] focus:outline-none"
-                  )}
-                >
-                  <option value="manual_adjustment">Manual Adjustment</option>
-                  <option value="stock_received">Stock Received</option>
-                  <option value="damaged">Damaged / Written Off</option>
-                  <option value="count_correction">Physical Count Correction</option>
-                </select>
-              </div>
+                <div>
+                  <label
+                    htmlFor="modal-reason-select"
+                    className="block text-xs font-medium text-[var(--kit-text-secondary)]"
+                  >
+                    Adjustment Reason
+                  </label>
+                  <select
+                    id="modal-reason-select"
+                    value={reason}
+                    onChange={(e) => setReason(e.target.value)}
+                    className={clsx(
+                      "mt-1 h-9 w-full rounded-[var(--kit-radius-md)] border border-[var(--kit-border)]",
+                      "bg-[var(--kit-surface)] px-3 text-sm text-[var(--kit-text-primary)]",
+                      "focus:border-[var(--kit-accent)] focus:outline-none"
+                    )}
+                  >
+                    <option value="manual_adjustment">Manual Adjustment</option>
+                    <option value="stock_received">Stock Received</option>
+                    <option value="damaged">Damaged / Written Off</option>
+                    <option value="count_correction">Physical Count Correction</option>
+                  </select>
+                </div>
 
-              <div className="flex items-center justify-end gap-2 pt-1">
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="h-8 rounded-[var(--kit-radius-md)] bg-[var(--kit-accent)] px-3.5 text-xs font-medium text-white hover:opacity-90 disabled:opacity-50 transition-opacity"
-                >
-                  {loading ? "Saving…" : "Save On-Hand Level"}
-                </button>
-              </div>
-            </form>
-          </div>
+                <div className="flex items-center justify-end gap-2 pt-1">
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="h-8 rounded-[var(--kit-radius-md)] bg-[var(--kit-accent)] px-3.5 text-xs font-medium text-white hover:opacity-90 disabled:opacity-50 transition-opacity"
+                  >
+                    {loading ? "Saving…" : "Save On-Hand Level"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          ) : (
+            <div className="mt-5 border-t border-[var(--kit-border)] pt-4">
+              <p className="text-xs text-[var(--kit-text-muted)] italic">
+                You have read-only access to inventory. Stock adjustments require the <code>manage_inventory</code> permission.
+              </p>
+            </div>
+          )}
 
           {/* Section 2: Active Reservations */}
           <div className="mt-6 border-t border-[var(--kit-border)] pt-4">
@@ -457,18 +474,20 @@ export function InventoryTable({ items }: InventoryTableProps) {
                         </div>
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={() => setReleaseConfirmTarget(res)}
-                        disabled={releasing}
-                        className={clsx(
-                          "inline-flex items-center gap-1 rounded-[var(--kit-radius-md)] px-2.5 py-1 text-xs font-semibold",
-                          "border border-[var(--kit-warning)]/40 bg-[var(--kit-warning)]/10 text-[var(--kit-warning)]",
-                          "hover:bg-[var(--kit-warning)]/20 active:scale-95 transition-all disabled:opacity-50"
-                        )}
-                      >
-                        <RotateCcw size={12} /> Release
-                      </button>
+                      {canManage && (
+                        <button
+                          type="button"
+                          onClick={() => setReleaseConfirmTarget(res)}
+                          disabled={releasing}
+                          className={clsx(
+                            "inline-flex items-center gap-1 rounded-[var(--kit-radius-md)] px-2.5 py-1 text-xs font-semibold",
+                            "border border-[var(--kit-warning)]/40 bg-[var(--kit-warning)]/10 text-[var(--kit-warning)]",
+                            "hover:bg-[var(--kit-warning)]/20 active:scale-95 transition-all disabled:opacity-50"
+                          )}
+                        >
+                          <RotateCcw size={12} /> Release
+                        </button>
+                      )}
                     </div>
                   );
                 })

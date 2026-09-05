@@ -25,9 +25,10 @@ import type { ProductWithDetails } from "@/lib/db/products";
 
 interface ArchivedProductsTableProps {
   products: ProductWithDetails[];
+  canManage?: boolean;
 }
 
-export function ArchivedProductsTable({ products }: ArchivedProductsTableProps) {
+export function ArchivedProductsTable({ products, canManage = true }: ArchivedProductsTableProps) {
   const { execute, loading, error, clearError } = useAdmin();
   const [selectedIds, setSelectedIds] = React.useState<string[]>([]);
   const [singleDeleteTarget, setSingleDeleteTarget] = React.useState<ProductWithDetails | null>(null);
@@ -93,7 +94,7 @@ export function ArchivedProductsTable({ products }: ArchivedProductsTableProps) 
       )}
 
       {/* Bulk selection action toolbar */}
-      {selectedIds.length > 0 && (
+      {canManage && selectedIds.length > 0 && (
         <div className="flex items-center justify-between rounded-[var(--kit-radius-md)] border border-[var(--kit-border)] bg-[var(--kit-surface)] px-4 py-2.5 shadow-[var(--kit-shadow-sm)] animate-in fade-in duration-150">
           <div className="flex items-center gap-2 text-sm text-[var(--kit-text-primary)] font-medium">
             <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-[var(--kit-accent)] text-[11px] font-bold text-white">
@@ -131,23 +132,27 @@ export function ArchivedProductsTable({ products }: ArchivedProductsTableProps) 
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-[var(--kit-border)] bg-[var(--kit-surface)]">
-              <th className="w-10 px-4 py-3 text-left">
-                <input
-                  type="checkbox"
-                  checked={allSelected}
-                  ref={(el) => {
-                    if (el) el.indeterminate = isIndeterminate;
-                  }}
-                  onChange={toggleSelectAll}
-                  aria-label="Select all products"
-                  className="h-4 w-4 rounded border-[var(--kit-border)] text-[var(--kit-accent)] focus:ring-[var(--kit-accent)] cursor-pointer"
-                />
-              </th>
+              {canManage && (
+                <th className="w-10 px-4 py-3 text-left">
+                  <input
+                    type="checkbox"
+                    checked={allSelected}
+                    ref={(el) => {
+                      if (el) el.indeterminate = isIndeterminate;
+                    }}
+                    onChange={toggleSelectAll}
+                    aria-label="Select all products"
+                    className="h-4 w-4 rounded border-[var(--kit-border)] text-[var(--kit-accent)] focus:ring-[var(--kit-accent)] cursor-pointer"
+                  />
+                </th>
+              )}
               <th className="px-4 py-3 text-left text-xs font-medium text-[var(--kit-text-muted)]">Product</th>
               <th className="px-3 py-3 text-left text-xs font-medium text-[var(--kit-text-muted)]">Category</th>
               <th className="px-3 py-3 text-left text-xs font-medium text-[var(--kit-text-muted)]">Archived Date</th>
               <th className="px-3 py-3 text-left text-xs font-medium text-[var(--kit-text-muted)]">Price</th>
-              <th className="px-4 py-3 text-right text-xs font-medium text-[var(--kit-text-muted)]">Actions</th>
+              {canManage && (
+                <th className="px-4 py-3 text-right text-xs font-medium text-[var(--kit-text-muted)]">Actions</th>
+              )}
             </tr>
           </thead>
           <tbody className="divide-y divide-[var(--kit-border)]">
@@ -171,15 +176,17 @@ export function ArchivedProductsTable({ products }: ArchivedProductsTableProps) 
                   )}
                 >
                   {/* Select Checkbox */}
-                  <td className="px-4 py-3">
-                    <input
-                      type="checkbox"
-                      checked={isSelected}
-                      onChange={() => toggleSelectOne(product.id)}
-                      aria-label={`Select ${product.name}`}
-                      className="h-4 w-4 rounded border-[var(--kit-border)] text-[var(--kit-accent)] focus:ring-[var(--kit-accent)] cursor-pointer"
-                    />
-                  </td>
+                  {canManage && (
+                    <td className="px-4 py-3">
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => toggleSelectOne(product.id)}
+                        aria-label={`Select ${product.name}`}
+                        className="h-4 w-4 rounded border-[var(--kit-border)] text-[var(--kit-accent)] focus:ring-[var(--kit-accent)] cursor-pointer"
+                      />
+                    </td>
+                  )}
 
                   {/* Name + Thumbnail */}
                   <td className="px-4 py-3">
@@ -222,33 +229,35 @@ export function ArchivedProductsTable({ products }: ArchivedProductsTableProps) 
                   </td>
 
                   {/* Actions */}
-                  <td className="px-4 py-3 text-right">
-                    <div className="flex items-center justify-end gap-1.5">
-                      {/* Restore */}
-                      <button
-                        type="button"
-                        onClick={() => handleRestore(product.id)}
-                        disabled={loading}
-                        title="Restore to draft"
-                        className="inline-flex items-center gap-1 rounded-[var(--kit-radius-md)] px-2.5 py-1 text-xs font-medium text-[var(--kit-success)] hover:bg-[var(--kit-success)]/10 transition-colors"
-                      >
-                        <RotateCcw size={13} />
-                        <span>Restore</span>
-                      </button>
+                  {canManage && (
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex items-center justify-end gap-1.5">
+                        {/* Restore */}
+                        <button
+                          type="button"
+                          onClick={() => handleRestore(product.id)}
+                          disabled={loading}
+                          title="Restore to draft"
+                          className="inline-flex items-center gap-1 rounded-[var(--kit-radius-md)] px-2.5 py-1 text-xs font-medium text-[var(--kit-success)] hover:bg-[var(--kit-success)]/10 transition-colors"
+                        >
+                          <RotateCcw size={13} />
+                          <span>Restore</span>
+                        </button>
 
-                      {/* Delete from catalog */}
-                      <button
-                        type="button"
-                        onClick={() => setSingleDeleteTarget(product)}
-                        disabled={loading}
-                        title="Permanently remove from catalog"
-                        className="inline-flex items-center gap-1 rounded-[var(--kit-radius-md)] px-2.5 py-1 text-xs font-medium text-[var(--kit-danger)] hover:bg-[var(--kit-danger)]/10 transition-colors"
-                      >
-                        <Trash2 size={13} />
-                        <span>Delete</span>
-                      </button>
-                    </div>
-                  </td>
+                        {/* Delete from catalog */}
+                        <button
+                          type="button"
+                          onClick={() => setSingleDeleteTarget(product)}
+                          disabled={loading}
+                          title="Permanently remove from catalog"
+                          className="inline-flex items-center gap-1 rounded-[var(--kit-radius-md)] px-2.5 py-1 text-xs font-medium text-[var(--kit-danger)] hover:bg-[var(--kit-danger)]/10 transition-colors"
+                        >
+                          <Trash2 size={13} />
+                          <span>Delete</span>
+                        </button>
+                      </div>
+                    </td>
+                  )}
                 </tr>
               );
             })}

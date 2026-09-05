@@ -31,7 +31,8 @@ interface ArchivedProductsPageProps {
 }
 
 export default async function ArchivedProductsPage({ searchParams }: ArchivedProductsPageProps) {
-  await requirePermissionPage("manage_products");
+  const ctx = await requirePermissionPage("view_products");
+  const canManage = ctx.permissions.includes("manage_products");
   const params = await searchParams;
   const search = params.q;
   const offset = Number(params.offset ?? 0);
@@ -86,7 +87,7 @@ export default async function ArchivedProductsPage({ searchParams }: ArchivedPro
         />
       ) : (
         <>
-          <ArchivedProductsTable products={products} />
+          <ArchivedProductsTable products={products} canManage={canManage} />
           <Pagination
             total={count}
             limit={limit}

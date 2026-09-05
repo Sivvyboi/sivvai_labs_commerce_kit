@@ -9,7 +9,7 @@
 import * as React from "react";
 import Link from "next/link";
 import type { Metadata } from "next";
-import { Plus, Archive } from "lucide-react";
+import { Plus, Archive, Package } from "lucide-react";
 import { clsx } from "clsx";
 
 import { requirePermissionPage } from "@/lib/auth/admin-guard";
@@ -32,7 +32,8 @@ interface AdminProductsPageProps {
 }
 
 export default async function AdminProductsPage({ searchParams }: AdminProductsPageProps) {
-  await requirePermissionPage("manage_products");
+  const ctx = await requirePermissionPage("view_products");
+  const canManage = ctx.permissions.includes("manage_products");
   const params = await searchParams;
   const search = params.q;
   const status = params.status && params.status !== "all" ? params.status : undefined;
@@ -76,16 +77,18 @@ export default async function AdminProductsPage({ searchParams }: AdminProductsP
             <Archive size={14} /> Archived Products
           </Link>
 
-          <Link
-            id="admin-new-product-btn"
-            href="/admin/products/new"
-            className={clsx(
-              "inline-flex h-9 items-center gap-1.5 rounded-[var(--kit-radius-md)] px-4 text-sm font-medium",
-              "bg-[var(--kit-accent)] text-white hover:opacity-90 transition-opacity"
-            )}
-          >
-            <Plus size={16} /> New Product
-          </Link>
+          {canManage && (
+            <Link
+              id="admin-new-product-btn"
+              href="/admin/products/new"
+              className={clsx(
+                "inline-flex h-9 items-center gap-1.5 rounded-[var(--kit-radius-md)] px-4 text-sm font-medium",
+                "bg-[var(--kit-accent)] text-white hover:opacity-90 transition-opacity"
+              )}
+            >
+              <Plus size={16} /> New Product
+            </Link>
+          )}
         </div>
       </div>
 
@@ -120,13 +123,18 @@ export default async function AdminProductsPage({ searchParams }: AdminProductsP
       {/* Table or Empty state */}
       {products.length === 0 ? (
         <EmptyAdminState
+          icon={Package}
           title="No products found"
-          description={search ? `No results for "${search}"` : "Get started by adding your first product."}
-          action={search ? undefined : { label: "Create Product", href: "/admin/products/new" }}
+          description={
+            search
+              ? `No products matched "${search}". Try adjusting your search or filters.`
+              : "Your catalog is empty. Create your first product to get started."
+          }
+          action={canManage && !search ? { label: "Create Product", href: "/admin/products/new" } : undefined}
         />
       ) : (
         <>
-          <ProductsTable products={products} />
+          <ProductsTable products={products} canManage={canManage} />
           <Pagination
             total={count}
             limit={limit}

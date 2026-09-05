@@ -57,7 +57,7 @@ export default async function TeamInvitationsPage() {
           Invitations
         </Link>
         <Link
-          href="/admin/activity"
+          href="/admin/team/audit"
           className="inline-flex items-center gap-1.5 px-3 pb-2 text-xs font-medium text-[var(--kit-text-muted)] hover:text-[var(--kit-text-primary)] transition-colors border-b-2 border-transparent hover:border-[var(--kit-border)]"
         >
           <Shield size={13} />
