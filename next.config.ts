@@ -73,6 +73,16 @@ const nextConfig: NextConfig = {
         ],
       },
     ];
+  // ---------------------------------------------------------------------------
+  // Canonical Sitemap Index Rewrite
+  // ---------------------------------------------------------------------------
+  async rewrites() {
+    return [
+      {
+        source: "/sitemap.xml",
+        destination: "/api/sitemap-index",
+      },
+    ];
   },
 };
 
