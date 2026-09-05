@@ -15,6 +15,9 @@ import { AdminShell } from "@/components/admin/layout/AdminShell";
 import { CurrencyProvider } from "@/components/shared/CurrencyProvider";
 import { localizationConfig } from "@/config/localization";
 
+// Auth-gated area — must never be statically pre-rendered at build time.
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: {
     template: "%s · Admin Console",
