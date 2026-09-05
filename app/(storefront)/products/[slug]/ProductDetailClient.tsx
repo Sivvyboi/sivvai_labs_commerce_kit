@@ -16,6 +16,7 @@ import { VariantSelector } from "@/components/storefront/product/VariantSelector
 import { QuantitySelector } from "@/components/storefront/product/QuantitySelector";
 import { DeliveryEstimate } from "@/components/storefront/product/DeliveryEstimate";
 import { Price } from "@/components/shared/Price";
+import { resolveVariantPrice, isVariantOnSale } from "@/lib/variants/pricing";
 import { StockBadge } from "@/components/shared/StockBadge";
 import { getProductStockSummary } from "@/features/storefront/utils/formatStockStatus";
 import { useCart } from "@/features/storefront/hooks/useCart";
@@ -60,9 +61,12 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
   // Derived active image ID
   const activeImageId = overrideImageId ?? selectedVariant?.image_id ?? null;
 
-  // Active price & stock
-  const activePrice = selectedVariant?.price_override ?? product.base_price;
-  const comparePrice = product.compare_at_price;
+  // Authoritative variant and product pricing via canonical resolver
+  const activePrice = resolveVariantPrice(product, selectedVariant);
+  const isOnSale = isVariantOnSale(product, selectedVariant);
+  const comparePrice = isOnSale
+    ? (product.compare_at_price ?? product.base_price)
+    : product.compare_at_price;
 
   const stockSummary = useMemo(() => {
     if (!selectedVariant) {

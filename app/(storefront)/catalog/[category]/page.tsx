@@ -51,10 +51,15 @@ export async function generateMetadata({
     const { category: slug } = await params;
     const search = await searchParams;
     const category = await categoryService.getCategoryBySlug(slug);
-    const title = category.name;
+    const title = category.seo_title || category.name;
     const description =
-      category.description ??
+      category.seo_description ||
+      category.description ||
       `Browse our collection of ${category.name} products at ${siteConfig.name}.`;
+
+    const ogImages = category.og_image
+      ? [{ url: category.og_image, alt: category.name }]
+      : undefined;
 
     const pageNum = parseInt(search?.page ?? "1", 10);
     const hasFilterParams = Boolean(
@@ -69,7 +74,18 @@ export async function generateMetadata({
       title,
       description,
       robots: hasFilterParams ? { index: false, follow: true } : undefined,
-      openGraph: { title, description, url: `${siteConfig.url}/catalog/${slug}` },
+      openGraph: {
+        title,
+        description,
+        url: `${siteConfig.url}/catalog/${slug}`,
+        images: ogImages,
+      },
+      twitter: {
+        card: "summary_large_image",
+        title,
+        description,
+        images: category.og_image ? [category.og_image] : undefined,
+      },
       alternates: { canonical: `${siteConfig.url}/catalog/${slug}` },
     };
   } catch {

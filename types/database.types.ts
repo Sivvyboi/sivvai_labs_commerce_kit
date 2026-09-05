@@ -292,6 +292,9 @@ export interface Database {
           name: string;
           slug: string;
           description: string | null;
+          seo_title: string | null;
+          seo_description: string | null;
+          og_image: string | null;
           archived_at: string | null;
           created_at: string;
           updated_at: string;
@@ -302,6 +305,9 @@ export interface Database {
           name: string;
           slug: string;
           description?: string | null;
+          seo_title?: string | null;
+          seo_description?: string | null;
+          og_image?: string | null;
           archived_at?: string | null;
           created_at?: string;
           updated_at?: string;
@@ -312,6 +318,9 @@ export interface Database {
           name?: string;
           slug?: string;
           description?: string | null;
+          seo_title?: string | null;
+          seo_description?: string | null;
+          og_image?: string | null;
           archived_at?: string | null;
           created_at?: string;
           updated_at?: string;
@@ -1060,6 +1069,7 @@ export interface Database {
           variant_id: string | null;
           product_name_snapshot: string;
           variant_label_snapshot: string;
+          selected_options_snapshot: Record<string, string>;
           sku_snapshot: string | null;
           image_url_snapshot: string | null;
           unit_price_snapshot: number;
@@ -1073,6 +1083,7 @@ export interface Database {
           variant_id?: string | null;
           product_name_snapshot: string;
           variant_label_snapshot: string;
+          selected_options_snapshot?: Record<string, string>;
           sku_snapshot?: string | null;
           image_url_snapshot?: string | null;
           unit_price_snapshot: number;
@@ -1086,6 +1097,7 @@ export interface Database {
           variant_id?: string | null;
           product_name_snapshot?: string;
           variant_label_snapshot?: string;
+          selected_options_snapshot?: Record<string, string>;
           sku_snapshot?: string | null;
           image_url_snapshot?: string | null;
           unit_price_snapshot?: number;

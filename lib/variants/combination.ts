@@ -29,7 +29,10 @@ export function normalizeOptionCombination(combo?: OptionCombination | null): Op
   const entries = Object.entries(combo)
     .map(
       ([k, v]) =>
-        [k.trim(), typeof v === "string" ? v.trim() : String(v ?? "").trim()] as [string, string]
+        [
+          k.normalize("NFC").trim(),
+          (typeof v === "string" ? v.normalize("NFC").trim() : String(v ?? "").normalize("NFC").trim()),
+        ] as [string, string]
     )
     .filter(([k, v]) => Boolean(k) && Boolean(v))
     .sort(([a], [b]) => a.localeCompare(b));

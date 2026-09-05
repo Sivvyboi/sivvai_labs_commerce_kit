@@ -14,10 +14,10 @@
 
 import type { MetadataRoute } from "next";
 import { siteConfig } from "@/config/site";
-import { isProduction } from "@/config/seo";
+import { checkIsProduction } from "@/config/seo";
 
 export default function robots(): MetadataRoute.Robots {
-  if (!isProduction) {
+  if (!checkIsProduction()) {
     // Block all crawling in dev / preview environments
     return {
       rules: {

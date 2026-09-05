@@ -15,17 +15,31 @@ import type { Metadata } from "next";
 import { siteConfig } from "@/config/site";
 
 /**
- * True when the application is running in a real production environment.
- *
- * Heuristic: production = NODE_ENV is "production" AND NEXT_PUBLIC_SITE_URL
- * points to a non-localhost origin. This lets us safely set `noindex` on
- * Vercel preview deployments (which run in "production" mode but have a
- * different URL) while keeping `index: true` only for the real live site.
+ * Evaluates whether the environment is a true production deployment.
+ * Protects preview, staging, and dev environments from accidental search engine indexing.
  */
-const isProduction =
-  process.env.NODE_ENV === "production" &&
-  !!process.env.NEXT_PUBLIC_SITE_URL &&
-  !process.env.NEXT_PUBLIC_SITE_URL.includes("localhost");
+export function checkIsProduction(env: Record<string, string | undefined> = process.env): boolean {
+  if (env.NODE_ENV !== "production") return false;
+
+  // Vercel deployment environment detection
+  if (env.VERCEL_ENV && env.VERCEL_ENV !== "production") return false;
+  if (env.NEXT_PUBLIC_VERCEL_ENV && env.NEXT_PUBLIC_VERCEL_ENV !== "production") return false;
+
+  // Generic app environment flags
+  if (env.APP_ENV && env.APP_ENV !== "production") return false;
+  if (env.ENVIRONMENT && env.ENVIRONMENT !== "production") return false;
+
+  const siteUrl = env.NEXT_PUBLIC_SITE_URL;
+  if (!siteUrl) return false;
+  if (siteUrl.includes("localhost") || siteUrl.includes("127.0.0.1")) return false;
+
+  // Vercel preview domain heuristic
+  if (siteUrl.includes(".vercel.app") && env.VERCEL_ENV !== "production") return false;
+
+  return true;
+}
+
+const isProduction = checkIsProduction(process.env);
 
 /**
  * The base metadata object exported from the root layout.

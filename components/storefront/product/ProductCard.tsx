@@ -23,10 +23,14 @@ import { useCart } from "@/features/storefront/hooks/useCart";
 import { ROUTES } from "@/constants/routes";
 import { ShoppingBag, Plus, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
+import { resolveVariantPrice, isVariantOnSale } from "@/lib/variants/pricing";
 
 export interface ProductCardProps extends React.HTMLAttributes<HTMLDivElement> {
   product: ProductWithDetails;
-  /** Optional override callback when the quick-add button is clicked */
+  /**
+   * Optional override for the quick add action.
+   * If not provided, falls back to direct cart addition for the first variant.
+   */
   onQuickAdd?: (product: ProductWithDetails) => void;
 }
 
@@ -53,7 +57,19 @@ export function ProductCard({
   const isAvailable = stockSummary.isAvailable;
   const stockQuantity = stockSummary.stockQuantity;
 
-  const firstVariantId = product.variants?.[0]?.id;
+  // Authoritative default variant and canonical pricing
+  const defaultVariant =
+    product.variants?.find((v) => v.is_default && v.status === "active") ??
+    product.variants?.find((v) => v.status === "active") ??
+    product.variants?.[0];
+
+  const activePrice = resolveVariantPrice(product, defaultVariant);
+  const isOnSale = isVariantOnSale(product, defaultVariant);
+  const comparePrice = isOnSale
+    ? (product.compare_at_price ?? product.base_price)
+    : product.compare_at_price;
+
+  const quickAddVariantId = defaultVariant?.id;
   const productUrl = ROUTES.product(product.slug);
 
   const handleQuickAddClick = async (e: React.MouseEvent<HTMLButtonElement>) => {
@@ -65,12 +81,12 @@ export function ProductCard({
       return;
     }
 
-    if (!firstVariantId || !isAvailable || isAdding) return;
+    if (!quickAddVariantId || !isAvailable || isAdding) return;
 
     setIsAdding(true);
     try {
       await addItem({
-        variantId: firstVariantId,
+        variantId: quickAddVariantId,
         quantity: 1,
       });
     } finally {
@@ -133,10 +149,10 @@ export function ProductCard({
         {/* Price & Quick Add Footer */}
         <div className="mt-auto flex items-center justify-between pt-3 gap-2">
           <Price
-            amount={Number(product.base_price) / 100}
+            amount={Number(activePrice) / 100}
             originalAmount={
-              product.compare_at_price
-                ? Number(product.compare_at_price) / 100
+              comparePrice
+                ? Number(comparePrice) / 100
                 : undefined
             }
             size="sm"

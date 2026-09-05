@@ -40,65 +40,31 @@ export async function getAllProducts(params: productRepo.FindProductsParams = {}
 }
 
 /**
- * Creates a complete product record in Supabase:
+ * Creates a complete product record atomically in Supabase via create_product_admin_rpc:
  *  1. Base product record in `products`.
  *  2. Default variant in `product_variants` (is_default: true, status: 'active').
- *  3. The DB trigger `trigger_ensure_variant_inventory` fires automatically and
- *     creates the companion `inventory_records` row with on_hand_quantity = 0.
- *  4. If initialStock > 0, we UPDATE that trigger-created row to set the
- *     requested stock. This is the single authoritative inventory-creation path.
+ *  3. The DB trigger `trigger_ensure_variant_inventory` creates `inventory_records`.
+ *  4. Initial stock is set atomically on the created inventory row.
+ *  If any step fails, the entire transaction rolls back cleanly.
  */
 export async function createProductAdmin(
   data: ProductInsert,
   initialStock = 0,
   sku?: string
 ) {
-  const product = await productRepo.createProduct(data);
   const supabase = createAdminClient();
 
-  const defaultSku =
-    sku && sku.trim()
-      ? sku.trim().toUpperCase()
-      : `${product.slug.toUpperCase().slice(0, 10)}-DEFAULT`;
+  const { data: created, error } = await supabase.rpc("create_product_admin_rpc" as never, {
+    p_product: data,
+    p_initial_stock: Math.max(0, initialStock),
+    p_sku: sku && sku.trim() ? sku.trim() : null,
+  } as never);
 
-  // 1. Insert the default variant — the DB trigger immediately creates the
-  //    inventory_records row (on_hand_quantity = 0, reserved_quantity = 0).
-  const { data: defaultVariant, error: varErr } = await supabase
-    .from("product_variants")
-    .insert({
-      product_id: product.id,
-      sku: defaultSku,
-      is_default: true,
-      status: "active",
-      option_combination: {},
-    })
-    .select()
-    .single();
-
-  if (varErr || !defaultVariant) {
-    // Variant creation failed; product row exists but is incomplete.
-    // Surface the error so callers can decide how to handle it.
-    throw varErr || new Error("Failed to create default variant for product");
+  if (error || !created) {
+    throw error || new Error("Failed to create product atomically");
   }
 
-  // 2. Apply initialStock by updating the trigger-created inventory row.
-  //    We never INSERT here — the trigger is the single authority for creation.
-  if (initialStock > 0) {
-    const { error: invErr } = await supabase
-      .from("inventory_records")
-      .update({ on_hand_quantity: Math.max(0, initialStock) })
-      .eq("variant_id", defaultVariant.id);
-
-    if (invErr) {
-      console.error(
-        `[createProductAdmin] Failed to set initialStock for variant ${defaultVariant.id}:`,
-        invErr.message
-      );
-      // Non-fatal: product + variant exist; stock can be adjusted manually.
-    }
-  }
-
-  return product;
+  return created as unknown as productRepo.ProductRow;
 }
 
 export async function updateProductAdmin(id: string, data: ProductUpdate) {
@@ -158,12 +124,42 @@ export async function duplicateProduct(id: string) {
   return duplicate;
 }
 
-/** Updates a product variant's editable fields (SKU + price override) */
+/** Updates a product variant's editable fields (SKU + price override + image) */
 export async function updateVariantAdmin(
   variantId: string,
-  data: { sku?: string | null; price_override?: number | null }
+  data: { sku?: string | null; price_override?: number | null; image_id?: string | null }
 ) {
   const supabase = createAdminClient();
+
+  // Validate variant image ownership at the service boundary if image_id is provided
+  if (data.image_id) {
+    const { data: variant, error: varErr } = await supabase
+      .from("product_variants")
+      .select("product_id")
+      .eq("id", variantId)
+      .maybeSingle();
+
+    if (varErr || !variant) {
+      throw varErr || new Error(`Variant ${variantId} not found`);
+    }
+
+    const { data: img, error: imgErr } = await supabase
+      .from("product_images")
+      .select("product_id")
+      .eq("id", data.image_id)
+      .maybeSingle();
+
+    if (imgErr || !img) {
+      throw imgErr || new Error(`Image ${data.image_id} not found`);
+    }
+
+    if (img.product_id !== variant.product_id) {
+      throw new Error(
+        `Variant image ownership validation failed: Image ${data.image_id} belongs to product ${img.product_id}, not variant product ${variant.product_id}`
+      );
+    }
+  }
+
   const { data: updated, error } = await supabase
     .from("product_variants")
     .update(data)
