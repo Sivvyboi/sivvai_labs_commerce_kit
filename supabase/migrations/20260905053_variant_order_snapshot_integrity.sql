@@ -218,7 +218,7 @@ BEGIN
                ) AS product_image_url,
                COALESCE(
                    NULLIF((SELECT string_agg(val, ' / ' ORDER BY key) FROM jsonb_each_text(pv.option_combination) AS t(key, val)), ''),
-                   v_line.sku,
+                   pv.sku,
                    'Default'
                ) AS formatted_variant_label
         FROM cart_lines cl
