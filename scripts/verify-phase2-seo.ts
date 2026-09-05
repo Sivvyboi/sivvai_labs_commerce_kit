@@ -38,6 +38,7 @@ import { checkIsProduction } from "../config/seo";
 import { buildProductSchema } from "../features/storefront/utils/buildProductSchema";
 import robots from "../app/robots";
 import sitemap, { generateSitemaps, SITEMAP_CHUNK_SIZE } from "../app/sitemap";
+import { GET as getSitemapIndex } from "../app/api/sitemap-index/route";
 import { siteConfig } from "../config/site";
 import { formatMinorCurrency } from "../lib/utils/format";
 import type { ProductWithDetails } from "../lib/db/products";
@@ -314,6 +315,22 @@ async function run() {
   const sitemapChunks = await generateSitemaps();
   assert(Array.isArray(sitemapChunks) && sitemapChunks.length >= 1, "generateSitemaps returns at least one sitemap chunk descriptor");
   assert(sitemapChunks[0].id !== undefined, "Chunk contains valid id");
+
+  // Verify Canonical Sitemap Index endpoint (/sitemap.xml via /api/sitemap-index)
+  const indexResponse = await getSitemapIndex();
+  assert(indexResponse.status === 200, "Canonical /sitemap.xml route handler returns 200 OK");
+  const contentType = indexResponse.headers.get("content-type") || "";
+  assert(contentType.includes("application/xml"), "Canonical /sitemap.xml returns application/xml content-type");
+
+  const indexXml = await indexResponse.text();
+  assert(indexXml.includes("<sitemapindex"), "Canonical /sitemap.xml body contains <sitemapindex root element");
+  assert(indexXml.includes(`${siteConfig.url}/sitemap/0.xml`), "Canonical /sitemap.xml contains pointer to /sitemap/0.xml chunk");
+  for (const chunk of sitemapChunks) {
+    assert(
+      indexXml.includes(`${siteConfig.url}/sitemap/${chunk.id}.xml`),
+      `Canonical /sitemap.xml references chunk /sitemap/${chunk.id}.xml`
+    );
+  }
 
   // Verify Primary Chunk (/sitemap/0.xml) entries
   const chunkResult = await sitemap({ id: Promise.resolve(String(sitemapChunks[0].id)) });
