@@ -368,9 +368,12 @@ async function run() {
   const redVariant = productGroupSchema.hasVariant[0];
   const blueVariant = productGroupSchema.hasVariant[1];
 
+  const redImg = Array.isArray(redVariant.image) ? redVariant.image[0] : redVariant.image;
+  const blueImg = Array.isArray(blueVariant.image) ? blueVariant.image[0] : blueVariant.image;
+
   assert(
     redVariant.name === "Classic Oxford Shirt – Red / M" &&
-      redVariant.image === "https://cdn.example.com/red.jpg" &&
+      redImg === "https://cdn.example.com/red.jpg" &&
       redVariant.offers.price === "22000.00" &&
       redVariant.offers.availability === "https://schema.org/InStock",
     "Test 25: Active variant 1 resolves sale price, image, and InStock status"
@@ -378,7 +381,7 @@ async function run() {
 
   assert(
     blueVariant.name === "Classic Oxford Shirt – Blue / L" &&
-      blueVariant.image === "https://cdn.example.com/blue.jpg" &&
+      blueImg === "https://cdn.example.com/blue.jpg" &&
       blueVariant.offers.price === "28000.00" &&
       blueVariant.offers.availability === "https://schema.org/OutOfStock",
     "Test 26: Active variant 2 resolves override price, image, and OutOfStock status"

@@ -1,0 +1,29 @@
+=== ALL CATEGORIES ===
+[CAT] c1a551f1-ca70-4b2a-89a5-aa33bb44cc55 | slug: apparel-fashion | name: "Apparel & Fashion" | archived: null
+[CAT] f1a853bb-0714-433f-b518-2306821aef2f | slug: shoes | name: "Shoes" | archived: null
+[CAT] 4d13e004-3c56-40e9-9515-ff467ba8fdd2 | slug: women-bags | name: "Women bags" | archived: null
+[CAT] 96460025-e9d0-46d1-9842-8995f5a6f785 | slug: men-shoes | name: "Men shoes" | archived: null
+[CAT] 3b1e0b19-2c6e-4d3f-a1e3-d3acbcb69f86 | slug: women-shoes | name: "Women shoes" | archived: null
+[CAT] bddaac9c-b32e-4058-8943-80209dfae08e | slug: baby-wares | name: "Baby Wares" | archived: null
+[CAT] c7e9bc88-3dc4-4a11-9a38-92c917bde5a7 | slug: suits | name: "Suits" | archived: null
+[CAT] eda98d27-e63e-41ac-bb6f-3d8c98149dcd | slug: new-test | name: "New Test" | archived: null
+
+=== ALL PRODUCTS ===
+[PROD] 00000000-0000-0000-0000-000000010000 | slug: ankara-agbada-set | status: published | cat: c1a551f1-ca70-4b2a-89a5-aa33bb44cc55 | name: "Ankara Agbada Set"
+[PROD] 00000000-0000-0000-0000-000000020000 | slug: plain-kaftan | status: published | cat: c1a551f1-ca70-4b2a-89a5-aa33bb44cc55 | name: "Plain Kaftan"
+[PROD] 6e1b6e0b-ce93-4c2a-866e-d83138b551c0 | slug: plain-kaftan-copy-1786472953012 | status: archived | cat: c1a551f1-ca70-4b2a-89a5-aa33bb44cc55 | name: "COPY OF Plain Kaftan"
+[PROD] dcd00b30-50f0-43c9-be35-16653afafda4 | slug: baggy | status: published | cat: c1a551f1-ca70-4b2a-89a5-aa33bb44cc55 | name: "Baggy "
+[PROD] cd391579-8c5e-4a07-8fa2-9f76edaa2e80 | slug: shirt | status: published | cat: c1a551f1-ca70-4b2a-89a5-aa33bb44cc55 | name: "Men Shirt"
+[PROD] b93e56e6-96cc-4b2c-a8e1-2abbf6b142aa | slug: high-heels-black | status: published | cat: f1a853bb-0714-433f-b518-2306821aef2f | name: "High Heels Black"
+[PROD] 08e316b0-25f2-4823-ab35-15a717050c3f | slug: black-male-shoe | status: published | cat: f1a853bb-0714-433f-b518-2306821aef2f | name: "Black male shoe"
+[PROD] 21ae040a-832c-4448-b86b-ea6a33277c88 | slug: channel-designer-hand-bag--red | status: published | cat: 4d13e004-3c56-40e9-9515-ff467ba8fdd2 | name: "Channel Designer Hand Bag -Red"
+[PROD] e0240a5e-0833-44f9-ae61-d9878ecd4795 | slug: channel-designer-handbag-red | status: archived | cat: 4d13e004-3c56-40e9-9515-ff467ba8fdd2 | name: "Channel designer handbag | Red"
+[PROD] ed816f12-6e84-4baa-abd3-db09ce57b071 | slug: channel-handbag | status: archived | cat: 4d13e004-3c56-40e9-9515-ff467ba8fdd2 | name: "Channel Handbag"
+[PROD] 07e2e05f-eecb-4bad-ba3c-e022ed25987f | slug: bag | status: archived | cat: null | name: "Bag"
+[PROD] d8def72f-ecae-45e9-8c7d-fc164ec1faa6 | slug: test-product | status: archived | cat: null | name: "Test product - changed"
+[PROD] 1b93604d-1718-44d0-811b-e654a3aa546d | slug: vintage-test-product | status: published | cat: null | name: "Vintage Test Product"
+[PROD] 6b4a149b-6e3a-4b70-820c-de4bf50e5e93 | slug: pink-panda-hooded-baby-outfit | status: published | cat: bddaac9c-b32e-4058-8943-80209dfae08e | name: "Pink Panda Hooded Baby Outfit"
+[PROD] f0e17856-9827-4c64-b1cf-eebcc6336632 | slug: classic-black-three-piece-suit-with-gold-accents | status: published | cat: c7e9bc88-3dc4-4a11-9a38-92c917bde5a7 | name: "Classic Black Three-Piece Suit with Gold Accents"
+[PROD] 1ed8c2be-aab7-4d3c-9374-1d4f186b33e7 | slug: modern-brown-two-piece-senator-set | status: published | cat: c1a551f1-ca70-4b2a-89a5-aa33bb44cc55 | name: "Modern Brown Two-Piece Senator Set"
+[PROD] 782a14fb-5ffa-4a5d-9840-e6d3883b717b | slug: brown-leather-perforated-sneakers | status: published | cat: 96460025-e9d0-46d1-9842-8995f5a6f785 | name: "Brown Leather Perforated Sneakers"
+[PROD] d79baaf4-c319-436b-86c6-bbc8b266e5f7 | slug: brown-sport-casual-sneakers | status: published | cat: f1a853bb-0714-433f-b518-2306821aef2f | name: "Brown/gray Sport Casual Sneakers"

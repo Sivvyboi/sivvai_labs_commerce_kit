@@ -97,12 +97,14 @@ export default async function sitemap(props?: {
     });
 
     for (const p of products) {
-      entries.push({
-        url: `${base}/products/${p.slug}`,
-        lastModified: p.updated_at ? new Date(p.updated_at) : new Date(),
-        changeFrequency: "weekly",
-        priority: 0.8,
-      });
+      if (!p.archived_at && p.status === "published") {
+        entries.push({
+          url: `${base}/products/${p.slug}`,
+          lastModified: p.updated_at ? new Date(p.updated_at) : new Date(),
+          changeFrequency: "weekly",
+          priority: 0.8,
+        });
+      }
     }
   } catch (err) {
     console.error(`[sitemap] Error querying products for sitemap chunk ${chunkIndex}:`, err);

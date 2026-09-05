@@ -38,6 +38,8 @@ import { checkIsProduction } from "../config/seo";
 import { buildProductSchema } from "../features/storefront/utils/buildProductSchema";
 import robots from "../app/robots";
 import sitemap, { generateSitemaps, SITEMAP_CHUNK_SIZE } from "../app/sitemap";
+import { GET as getSitemapIndex } from "../app/sitemap.xml/route";
+import { siteConfig } from "../config/site";
 import { formatMinorCurrency } from "../lib/utils/format";
 import type { ProductWithDetails } from "../lib/db/products";
 
@@ -305,8 +307,8 @@ async function run() {
     "Production robots disallows /checkout/"
   );
 
-  // ── 5. Sitemap Scalability & Chunking ───────────────────────────────────────
-  console.log("\n--- 5. Sitemap Scalability & Chunking ---");
+  // ── 5. Sitemap Scalability, Canonical Index & Clean Catalog ────────────────
+  console.log("\n--- 5. Sitemap Scalability, Canonical Index & Clean Catalog ---");
 
   assert(SITEMAP_CHUNK_SIZE > 0 && SITEMAP_CHUNK_SIZE <= 50000, `Sitemap chunk size (${SITEMAP_CHUNK_SIZE}) is within protocol bounds`);
 
@@ -314,9 +316,53 @@ async function run() {
   assert(Array.isArray(sitemapChunks) && sitemapChunks.length >= 1, "generateSitemaps returns at least one sitemap chunk descriptor");
   assert(sitemapChunks[0].id !== undefined, "Chunk contains valid id");
 
+  // Verify Canonical Sitemap Index endpoint (/sitemap.xml)
+  const indexResponse = await getSitemapIndex();
+  assert(indexResponse.status === 200, "Canonical /sitemap.xml route handler returns 200 OK");
+  const contentType = indexResponse.headers.get("content-type") || "";
+  assert(contentType.includes("application/xml"), "Canonical /sitemap.xml returns application/xml content-type");
+
+  const indexXml = await indexResponse.text();
+  assert(indexXml.includes("<sitemapindex"), "Canonical /sitemap.xml body contains <sitemapindex root element");
+  assert(indexXml.includes(`${siteConfig.url}/sitemap/0.xml`), "Canonical /sitemap.xml contains pointer to /sitemap/0.xml chunk");
+  for (const chunk of sitemapChunks) {
+    assert(
+      indexXml.includes(`${siteConfig.url}/sitemap/${chunk.id}.xml`),
+      `Canonical /sitemap.xml references chunk /sitemap/${chunk.id}.xml`
+    );
+  }
+
+  // Verify Primary Chunk (/sitemap/0.xml) entries
   const chunkResult = await sitemap({ id: Promise.resolve(String(sitemapChunks[0].id)) });
   assert(Array.isArray(chunkResult), "sitemap({ id }) returns an array of URL metadata entries");
   assert(chunkResult.length > 0, "sitemap returns at least one canonical URL entry");
+
+  // Verify that test fixture URLs are completely absent from sitemap
+  const chunkUrls = chunkResult.map((e) => e.url);
+  const hasTestCatP2 = chunkUrls.some((u) => u.includes("p2-test-cat-"));
+  const hasTestCatP3P4 = chunkUrls.some((u) => u.includes("verify-p3p4-cat"));
+  const hasTestCatP7P8 = chunkUrls.some((u) => u.includes("verify-p7p8-cat"));
+  const hasTestProductP8 = chunkUrls.some((u) => u.includes("p8-shoe-"));
+  const hasTestProductSneaker = chunkUrls.some((u) => u.includes("realistic-sneaker-"));
+  const hasTestProductVariant = chunkUrls.some((u) => u.includes("test-variant-inv-"));
+
+  assert(!hasTestCatP2, "Test fixture 'p2-test-cat-*' is NOT present in sitemap output");
+  assert(!hasTestCatP3P4, "Test fixture 'verify-p3p4-cat' is NOT present in sitemap output");
+  assert(!hasTestCatP7P8, "Test fixture 'verify-p7p8-cat' is NOT present in sitemap output");
+  assert(!hasTestProductP8, "Test fixture 'p8-shoe-*' is NOT present in sitemap output");
+  assert(!hasTestProductSneaker, "Test fixture 'realistic-sneaker-*' is NOT present in sitemap output");
+  assert(!hasTestProductVariant, "Test fixture 'test-variant-inv-*' is NOT present in sitemap output");
+
+  // Verify legitimate merchant URLs are present
+  const hasHome = chunkUrls.includes(siteConfig.url);
+  const hasCatalog = chunkUrls.includes(`${siteConfig.url}/catalog`);
+  const hasApparelCat = chunkUrls.includes(`${siteConfig.url}/catalog/apparel-fashion`);
+  const hasShoesCat = chunkUrls.includes(`${siteConfig.url}/catalog/shoes`);
+
+  assert(hasHome, "Sitemap chunk 0 includes homepage canonical URL");
+  assert(hasCatalog, "Sitemap chunk 0 includes /catalog canonical URL");
+  assert(hasApparelCat, "Sitemap chunk 0 includes legitimate merchant category /catalog/apparel-fashion");
+  assert(hasShoesCat, "Sitemap chunk 0 includes legitimate merchant category /catalog/shoes");
 
   // ── 6. Currency Representation Integrity ───────────────────────────────────
   console.log("\n--- 6. Currency Representation Integrity ---");
