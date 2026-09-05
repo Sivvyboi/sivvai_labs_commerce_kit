@@ -485,29 +485,17 @@ export async function deleteVariant(variantId: string): Promise<void> {
 export async function setDefaultVariant(productId: string, variantId: string): Promise<void> {
   const supabase = createAdminClient();
 
-  // Try RPC first for atomicity
+  // The set_product_default_variant RPC is the ONLY permitted path.
+  // It runs under SECURITY DEFINER with an advisory lock and is the sole owner
+  // of the single-default invariant. The non-atomic two-query fallback that
+  // previously existed here has been removed: it could violate the invariant under
+  // concurrent load and silently masked RPC configuration issues.
   const { error: rpcError } = await supabase.rpc("set_product_default_variant" as never, {
     p_product_id: productId,
     p_variant_id: variantId,
   } as never);
 
-  if (!rpcError) return;
-
-  // Fallback if RPC is not yet loaded in DB
-  const { error: unsetError } = await supabase
-    .from("product_variants")
-    .update({ is_default: false })
-    .eq("product_id", productId)
-    .neq("id", variantId);
-
-  if (unsetError) throw unsetError;
-
-  const { error: setError } = await supabase
-    .from("product_variants")
-    .update({ is_default: true })
-    .eq("id", variantId)
-    .eq("product_id", productId);
-
-  if (setError) throw setError;
+  if (rpcError) throw rpcError;
 }
+
 

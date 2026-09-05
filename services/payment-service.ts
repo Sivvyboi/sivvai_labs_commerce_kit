@@ -293,9 +293,30 @@ export async function verifyAndFulfillPayment(reference: string): Promise<Verify
   // 5. Strict verification assertions: status, currency, and amount
   const verifiedKobo = nairaToKobo(verification.amount);
   const expectedKobo = Number(attempt.amount);
+
+  // Defensive assertion: a legitimate payment attempt must always have a positive
+  // expected amount. A zero expectedKobo means the checkout grand_total was not
+  // captured correctly and the transaction must not proceed.
+  if (expectedKobo <= 0) {
+    throw new PaymentVerificationError(
+      reference,
+      `Payment verification rejected: stored expected amount is ${expectedKobo} kobo — checkout total was not captured correctly.`
+    );
+  }
+
   const isStatusSuccess = verification.status === "success";
   const isCurrencyMatch = (verification.currency || "NGN").toUpperCase() === (attempt.currency || "NGN").toUpperCase();
-  const isAmountMatch = verifiedKobo === expectedKobo || verification.amount === 0; // Handle dev mock mode
+
+  // Amount must match exactly in production.
+  // In development / testing only: when NODE_ENV is not 'production' AND no provider
+  // API key is configured (i.e., the mock provider is active), providers return
+  // amount=0. We allow this shortcut ONLY in that explicit, keyless dev context.
+  const isDevMockMode =
+    process.env.NODE_ENV !== "production" &&
+    verification.amount === 0 &&
+    !process.env.PAYSTACK_SECRET_KEY &&
+    !process.env.FLUTTERWAVE_SECRET_KEY;
+  const isAmountMatch = verifiedKobo === expectedKobo || isDevMockMode;
 
   if (!isStatusSuccess || !isCurrencyMatch || !isAmountMatch) {
     await paymentRepo.updatePaymentAttempt(attempt.id, {

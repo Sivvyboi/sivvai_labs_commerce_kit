@@ -5,8 +5,6 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import type { ProductInsert, ProductUpdate } from "@/lib/db/products";
 import {
   generateCartesianCombinations,
-  compareOptionCombinations,
-  generateVariantSku,
 } from "@/lib/variants/combination";
 
 export async function getProducts(params?: productRepo.FindProductsParams) {
@@ -448,121 +446,47 @@ export interface SyncProductVariantsResult {
 /**
  * Synchronizes product variants with current option groups and values:
  * 1. Generates target combinations via Cartesian product (or [{}] for simple products).
- * 2. Compares existing variants with target combinations.
- * 3. Creates missing variants with companion inventory records.
- * 4. Reactivates any inactive variants matching target combinations.
- * 5. Safely deactivates variants that have order history or reservations.
- * 6. Deletes unreferenced stale variants.
- * 7. Enforces the invariant of exactly one default variant.
+ * 2. Delegates the atomic create / reactivate / retire / ensure-default sequence
+ *    to the sync_product_variants_rpc PL/pgSQL function, which runs the full
+ *    operation in a single DB transaction.
+ *
+ * Previous implementation made sequential DB calls with no transaction boundary.
+ * A failure at any step left the product in partial variant state. The RPC
+ * eliminates this window by being all-or-nothing at the database level.
  */
 export async function syncProductVariants(productId: string): Promise<SyncProductVariantsResult> {
   const product = await findProductByIdAdmin(productId);
   if (!product) throw new NotFoundError("Product", productId);
 
-  const existingVariants = await productRepo.findVariantsByProductId(productId);
+  // Compute target combinations on the TypeScript side (Cartesian product with
+  // canonical normalization). The DB RPC performs the sync atomically.
   const targetCombos = generateCartesianCombinations(product.option_groups || []);
 
-  const variantIds = existingVariants.map((v) => v.id);
-  const orderCounts = await productRepo.findVariantOrderLineCount(variantIds);
-  const reservationCounts = await productRepo.findVariantReservationCount(variantIds);
+  const supabase = createAdminClient();
+  const { data, error } = await supabase.rpc("sync_product_variants_rpc" as never, {
+    p_product_id: productId,
+    p_target_combinations: JSON.stringify(targetCombos),
+  } as never);
 
-  let created = 0;
-  let reactivated = 0;
-  let retired = 0;
-
-  const matchedVariantIds = new Set<string>();
-
-  // --------------------------------------------------------------------------
-  // Reactivation policy (Phase 3-D, stricter rule):
-  // A variant is a reactivation candidate ONLY if ALL of these are true:
-  //   1. Its option_combination matches the target.
-  //   2. archived_at IS NULL (not permanently retired).
-  //   3. It has NEVER appeared in order_lines (no order history).
-  // Variants that fail any of these criteria are excluded from the match pool;
-  // a new variant row will be created for that combination instead.
-  // --------------------------------------------------------------------------
-
-  // Process each target combination
-  for (let i = 0; i < targetCombos.length; i++) {
-    const targetCombo = targetCombos[i];
-
-    // Only consider reactivation candidates: non-archived, no order history.
-    const existing = existingVariants.find(
-      (v) =>
-        v.archived_at === null &&
-        (orderCounts[v.id] || 0) === 0 &&
-        compareOptionCombinations(v.option_combination as Record<string, string>, targetCombo)
+  if (error) {
+    throw new Error(
+      `sync_product_variants_rpc failed for product ${productId}: ${error.message}`
     );
-
-    if (existing) {
-      matchedVariantIds.add(existing.id);
-      if (existing.status !== "active") {
-        // Reactivate a temporarily inactive variant (no history, no archive).
-        await productRepo.updateVariant(existing.id, {
-          status: "active",
-          archived_at: null,
-        });
-        reactivated++;
-      }
-    } else {
-      // No reactivation candidate found — create a fresh variant row.
-      // The DB trigger (trigger_ensure_variant_inventory) automatically creates
-      // the companion inventory_records row; no manual inventory insert needed.
-      const sku = generateVariantSku(product.slug, targetCombo, i + 1);
-      await productRepo.createVariant({
-        product_id: product.id,
-        sku,
-        option_combination: targetCombo,
-        status: "active",
-        is_default: false,
-      });
-
-      created++;
-    }
   }
 
-  // Handle stale variants not in target combinations
-  const staleVariants = existingVariants.filter((v) => !matchedVariantIds.has(v.id));
-
-  for (const stale of staleVariants) {
-    const hasOrders = (orderCounts[stale.id] || 0) > 0;
-    const hasReservations = (reservationCounts[stale.id] || 0) > 0;
-
-    if (hasOrders || hasReservations) {
-      // Historical integrity: deactivate/archive rather than delete
-      if (stale.status !== "inactive" || !stale.archived_at || stale.is_default) {
-        await productRepo.updateVariant(stale.id, {
-          status: "inactive",
-          archived_at: new Date().toISOString(),
-          is_default: false,
-        });
-        retired++;
-      }
-    } else {
-      // Safe to clean up
-      await productRepo.deleteVariant(stale.id);
-      retired++;
-    }
-  }
-
-  // Ensure exactly one default variant invariant
-  const currentVariants = await productRepo.findVariantsByProductId(productId);
-  const activeVariants = currentVariants.filter(
-    (v) => v.status === "active" && v.archived_at === null
-  );
-
-  const defaultVariant = activeVariants.find((v) => v.is_default);
-  if (!defaultVariant && activeVariants.length > 0) {
-    await productRepo.setDefaultVariant(productId, activeVariants[0].id);
-  } else if (defaultVariant) {
-    await productRepo.setDefaultVariant(productId, defaultVariant.id);
-  }
+  const result = data as {
+    created: number;
+    reactivated: number;
+    retired: number;
+    total: number;
+    default_variant_id: string | null;
+  };
 
   return {
-    created,
-    reactivated,
-    retired,
-    total: activeVariants.length,
+    created:     result.created     ?? 0,
+    reactivated: result.reactivated ?? 0,
+    retired:     result.retired     ?? 0,
+    total:       result.total       ?? 0,
   };
 }
 
