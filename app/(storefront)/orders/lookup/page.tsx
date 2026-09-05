@@ -1,9 +1,11 @@
+import type { Metadata } from "next";
 import { GuestOrderLookupForm } from "@/components/storefront/account/GuestOrderLookupForm";
 import { Search } from "lucide-react";
 
-export const metadata = {
+export const metadata: Metadata = {
   title: "Track Your Order",
   description: "Look up your order status using your order number and email address.",
+  robots: { index: false, follow: false },
 };
 
 export default function OrderLookupPage() {

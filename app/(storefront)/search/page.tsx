@@ -50,18 +50,18 @@ export async function generateMetadata({
 
   if (!query) {
     return {
-      title: `Search — ${siteConfig.name}`,
-      robots: { index: false },
+      title: "Search",
+      robots: { index: false, follow: true },
     };
   }
 
-  const title = `"${query}" — Search Results — ${siteConfig.name}`;
+  const title = `"${query}" — Search Results`;
   const description = `Browse search results for "${query}" on ${siteConfig.name}.`;
 
   return {
     title,
     description,
-    robots: { index: false }, // Search results pages are typically noindex
+    robots: { index: false, follow: true },
     openGraph: { title, description },
   };
 }

@@ -12,6 +12,7 @@ import Link from "next/link";
 import { siteConfig } from "@/config/site";
 import { ChevronRight, Home } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
+import { buildBreadcrumbSchema } from "@/features/storefront/utils/buildBreadcrumbSchema";
 
 export interface BreadcrumbItem {
   label: string;
@@ -34,17 +35,8 @@ export function Breadcrumb({
     ? [{ label: "Home", href: "/" }, ...items]
     : items;
 
-  // Build JSON-LD BreadcrumbList Schema
-  const jsonLd = {
-    "@context": "https://schema.org",
-    "@type": "BreadcrumbList",
-    itemListElement: allItems.map((item, index) => ({
-      "@type": "ListItem",
-      position: index + 1,
-      name: item.label,
-      ...(item.href ? { item: `${siteConfig.url}${item.href}` } : {}),
-    })),
-  };
+  // Build JSON-LD BreadcrumbList Schema using centralized utility
+  const jsonLd = buildBreadcrumbSchema(allItems);
 
   return (
     <>

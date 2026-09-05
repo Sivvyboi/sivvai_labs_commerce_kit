@@ -1,8 +1,13 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { getCurrentUser, getOrCreateCustomer } from "@/lib/auth/server-auth";
 import { AccountSidebar } from "@/components/storefront/account/AccountSidebar";
 import { AccountProvider } from "@/components/providers/AccountProvider";
 import { ROUTES } from "@/constants/routes";
+
+export const metadata: Metadata = {
+  robots: { index: false, follow: false },
+};
 
 export default async function AccountLayout({
   children,

@@ -18,8 +18,9 @@ import { ShoppingBag } from "lucide-react";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: `Shopping Cart — ${siteConfig.name}`,
+  title: "Shopping Cart",
   description: `View and manage items in your shopping cart at ${siteConfig.name}.`,
+  robots: { index: false, follow: false },
 };
 
 export default async function CartPage() {

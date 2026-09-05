@@ -48,16 +48,33 @@ export async function generateMetadata({
   const categorySlug = params.category;
   const query = params.q;
 
-  let title = `All Products — ${siteConfig.name}`;
+  let title = "All Products";
   if (categorySlug) {
-    title = `${categorySlug.replace(/-/g, " ").toUpperCase()} — ${siteConfig.name}`;
+    title = categorySlug
+      .split("-")
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(" ");
   } else if (query) {
-    title = `Search: "${query}" — ${siteConfig.name}`;
+    title = `Search: "${query}"`;
   }
+
+  const pageNum = parseInt(params.page ?? "1", 10);
+  const hasFilterParams = Boolean(
+    (params.page && !isNaN(pageNum) && pageNum > 1) ||
+    params.sort ||
+    params.category ||
+    params.featured ||
+    params.min ||
+    params.max ||
+    params.q
+  );
 
   return {
     title,
     description: `Explore our collection of published products at ${siteConfig.name}.`,
+    robots: hasFilterParams
+      ? { index: false, follow: true }
+      : undefined,
     openGraph: {
       title,
       description: `Explore our collection of published products at ${siteConfig.name}.`,

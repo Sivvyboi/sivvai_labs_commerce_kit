@@ -46,20 +46,32 @@ export async function generateStaticParams() {
 
 export async function generateMetadata({
   params,
+  searchParams,
 }: ProductPageProps): Promise<Metadata> {
   try {
     const { slug } = await params;
+    const { variant: variantId } = (await searchParams) ?? {};
     const product = await productService.getProductBySlug(slug);
 
-    const title = `${product.seo_title || product.name} — ${siteConfig.name}`;
+    const title = product.seo_title || product.name;
     const description =
       product.seo_description ||
       product.description ||
       `Buy ${product.name} online at ${siteConfig.name}. Quality guaranteed.`;
 
-    const primaryImage =
-      product.images?.find((img) => img.is_primary)?.url ??
-      product.images?.[0]?.url;
+    const selectedVariant = variantId
+      ? product.variants?.find((v) => v.id === variantId && v.status === "active" && !v.archived_at)
+      : undefined;
+
+    let ogImage: string | undefined;
+    if (selectedVariant?.image_id && product.images) {
+      ogImage = product.images.find((img) => img.id === selectedVariant.image_id)?.url;
+    }
+    if (!ogImage) {
+      ogImage =
+        product.images?.find((img) => img.is_primary)?.url ??
+        product.images?.[0]?.url;
+    }
 
     const canonicalUrl = `${siteConfig.url}/products/${slug}`;
 
@@ -71,15 +83,15 @@ export async function generateMetadata({
         description,
         url: canonicalUrl,
         siteName: siteConfig.name,
-        images: primaryImage
-          ? [{ url: primaryImage, alt: product.name }]
+        images: ogImage
+          ? [{ url: ogImage, alt: product.name }]
           : undefined,
       },
       twitter: {
         card: "summary_large_image",
         title,
         description,
-        images: primaryImage ? [primaryImage] : undefined,
+        images: ogImage ? [ogImage] : undefined,
       },
       alternates: {
         canonical: canonicalUrl,
@@ -87,7 +99,7 @@ export async function generateMetadata({
     };
   } catch {
     return {
-      title: `Product — ${siteConfig.name}`,
+      title: "Product",
     };
   }
 }

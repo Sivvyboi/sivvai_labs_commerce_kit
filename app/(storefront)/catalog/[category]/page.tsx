@@ -45,22 +45,35 @@ export interface CategoryPageProps {
 
 export async function generateMetadata({
   params,
+  searchParams,
 }: CategoryPageProps): Promise<Metadata> {
   try {
     const { category: slug } = await params;
+    const search = await searchParams;
     const category = await categoryService.getCategoryBySlug(slug);
-    const title = `${category.name} — ${siteConfig.name}`;
+    const title = category.name;
     const description =
       category.description ??
       `Browse our collection of ${category.name} products at ${siteConfig.name}.`;
+
+    const pageNum = parseInt(search?.page ?? "1", 10);
+    const hasFilterParams = Boolean(
+      (search?.page && !isNaN(pageNum) && pageNum > 1) ||
+      search?.sort ||
+      search?.featured ||
+      search?.min ||
+      search?.max
+    );
+
     return {
       title,
       description,
+      robots: hasFilterParams ? { index: false, follow: true } : undefined,
       openGraph: { title, description, url: `${siteConfig.url}/catalog/${slug}` },
       alternates: { canonical: `${siteConfig.url}/catalog/${slug}` },
     };
   } catch {
-    return { title: `Category — ${siteConfig.name}` };
+    return { title: "Category" };
   }
 }
 
