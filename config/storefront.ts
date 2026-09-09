@@ -55,7 +55,7 @@ export interface AnnouncementBannerConfig {
 }
 
 export const announcementBanner: AnnouncementBannerConfig = {
-  enabled: true,
+  enabled: false,
   message: "🎉 Free delivery on orders over ₦15,000. Limited time only.",
   link: "/catalog",
   linkLabel: "Shop Now",
