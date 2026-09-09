@@ -67,14 +67,16 @@ export const defaultMetadata: Metadata = {
       default: siteConfig.name,
     },
     description: siteConfig.tagline,
-    // Add /public/images/og-default.jpg when you have brand assets
-    // images: [{ url: "/images/og-default.jpg", width: 1200, height: 630 }],
+    images: siteConfig.logo
+      ? [{ url: siteConfig.logo, width: 1024, height: 1024, alt: siteConfig.name }]
+      : undefined,
   },
 
   twitter: {
     card: "summary_large_image",
     title: siteConfig.name,
     description: siteConfig.tagline,
+    images: siteConfig.logo ? [siteConfig.logo] : undefined,
   },
 
   /**

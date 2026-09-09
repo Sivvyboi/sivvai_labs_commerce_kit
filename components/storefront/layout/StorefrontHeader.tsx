@@ -17,6 +17,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { siteConfig } from "@/config/site";
 import { storefrontNav } from "@/config/storefront";
 import { useCartStore } from "@/features/storefront/store/cart.store";
@@ -47,9 +48,21 @@ export function StorefrontHeader() {
 
             <Link
               href={ROUTES.home}
-              className="text-lg font-bold tracking-tight text-[var(--kit-text-primary)] hover:opacity-90 transition-opacity"
+              className="flex items-center gap-2.5 hover:opacity-90 transition-opacity"
             >
-              {siteConfig.name}
+              {siteConfig.logo && (
+                <Image
+                  src={siteConfig.logo}
+                  alt={siteConfig.name}
+                  width={36}
+                  height={36}
+                  priority
+                  className="h-9 w-9 rounded-lg object-cover ring-1 ring-black/10 dark:ring-white/10 shadow-xs shrink-0 bg-black"
+                />
+              )}
+              <span className="text-lg font-bold tracking-tight text-[var(--kit-text-primary)]">
+                {siteConfig.name}
+              </span>
             </Link>
           </div>
 

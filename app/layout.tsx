@@ -85,6 +85,7 @@ function buildSiteSchema() {
     name,
     url,
   };
+  if (siteConfig.logo) organization.logo = `${url}${siteConfig.logo}`;
   if (tagline) organization.description = tagline;
   if (contact.email) organization.email = contact.email;
   if (contact.phone) organization.telephone = contact.phone;

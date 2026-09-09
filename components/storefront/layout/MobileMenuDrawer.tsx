@@ -11,6 +11,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { siteConfig } from "@/config/site";
 import { storefrontNav } from "@/config/storefront";
 import { useCustomerAuth } from "@/features/storefront/hooks/useCustomerAuth";
@@ -99,9 +100,18 @@ export function MobileMenuDrawer({ isOpen, onClose }: MobileMenuDrawerProps) {
           <Link
             href="/"
             onClick={onClose}
-            className="text-base font-bold tracking-tight text-[var(--kit-text-primary)]"
+            className="flex items-center gap-2.5 text-base font-bold tracking-tight text-[var(--kit-text-primary)] hover:opacity-90 transition-opacity"
           >
-            {siteConfig.name}
+            {siteConfig.logo && (
+              <Image
+                src={siteConfig.logo}
+                alt={siteConfig.name}
+                width={32}
+                height={32}
+                className="h-8 w-8 rounded-lg object-cover ring-1 ring-black/10 dark:ring-white/10 shadow-xs shrink-0 bg-black"
+              />
+            )}
+            <span>{siteConfig.name}</span>
           </Link>
           <button
             onClick={onClose}

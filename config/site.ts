@@ -38,7 +38,7 @@ export const siteConfig = {
    * Path is relative to the /public directory.
    * When null, the store name is rendered as text.
    */
-  logo: null as string | null,
+  logo: "/images/logo.png" as string | null,
 
   /**
    * Contact details for the merchant.

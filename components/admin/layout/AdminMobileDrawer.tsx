@@ -10,6 +10,8 @@
 import * as React from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
+import Image from "next/image";
+import { siteConfig } from "@/config/site";
 import { usePathname } from "next/navigation";
 import { clsx } from "clsx";
 import { logoutAction } from "@/lib/auth/admin-auth";
@@ -108,10 +110,20 @@ export function AdminMobileDrawer({
       >
         {/* Drawer header */}
         <div className="flex h-14 flex-shrink-0 items-center justify-between border-b border-[var(--kit-border)] px-4">
-          <Link href="/admin" onClick={onClose} className="flex items-center gap-2">
-            <span className="flex h-7 w-7 items-center justify-center rounded-[var(--kit-radius-md)] bg-[var(--kit-accent)] text-white">
-              <LayoutDashboard size={14} />
-            </span>
+          <Link href="/admin" onClick={onClose} className="flex items-center gap-2.5">
+            {siteConfig.logo ? (
+              <Image
+                src={siteConfig.logo}
+                alt={siteConfig.name}
+                width={28}
+                height={28}
+                className="h-7 w-7 rounded-[var(--kit-radius-md)] object-cover ring-1 ring-black/10 dark:ring-white/10 bg-black shrink-0"
+              />
+            ) : (
+              <span className="flex h-7 w-7 items-center justify-center rounded-[var(--kit-radius-md)] bg-[var(--kit-accent)] text-white">
+                <LayoutDashboard size={14} />
+              </span>
+            )}
             <span className="text-sm font-semibold text-[var(--kit-text-primary)]">Admin Console</span>
           </Link>
           <button

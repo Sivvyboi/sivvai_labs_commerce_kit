@@ -9,6 +9,7 @@
  */
 
 import Link from "next/link";
+import Image from "next/image";
 import { siteConfig } from "@/config/site";
 import { footerColumns } from "@/config/storefront";
 import { Phone, Mail, MessageCircle } from "lucide-react";
@@ -27,9 +28,18 @@ export function StorefrontFooter() {
           <div className="lg:col-span-2 space-y-4">
             <Link
               href="/"
-              className="text-lg font-bold tracking-tight text-[var(--kit-text-primary)] hover:opacity-90 transition-opacity"
+              className="inline-flex items-center gap-3 text-lg font-bold tracking-tight text-[var(--kit-text-primary)] hover:opacity-90 transition-opacity"
             >
-              {siteConfig.name}
+              {siteConfig.logo && (
+                <Image
+                  src={siteConfig.logo}
+                  alt={siteConfig.name}
+                  width={36}
+                  height={36}
+                  className="h-9 w-9 rounded-lg object-cover ring-1 ring-black/10 dark:ring-white/10 shadow-xs shrink-0 bg-black"
+                />
+              )}
+              <span>{siteConfig.name}</span>
             </Link>
 
             <p className="max-w-sm text-sm text-[var(--kit-muted-fg)] leading-relaxed">
