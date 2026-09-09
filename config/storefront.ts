@@ -96,7 +96,8 @@ export const heroConfig: HeroConfig = {
   primaryCtaHref: "/catalog",
   secondaryCta: "View Collections",
   secondaryCtaHref: "/catalog?featured=true",
-  backgroundType: "gradient",
+  backgroundType: "image",
+  backgroundImage: "/images/hero-cover.png",
 };
 
 export interface BenefitItem {
