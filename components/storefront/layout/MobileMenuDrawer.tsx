@@ -100,7 +100,8 @@ export function MobileMenuDrawer({ isOpen, onClose }: MobileMenuDrawerProps) {
           <Link
             href="/"
             onClick={onClose}
-            className="flex items-center gap-2.5 text-base font-bold tracking-tight text-[var(--kit-text-primary)] hover:opacity-90 transition-opacity"
+            className="flex items-center gap-2.5 text-base font-bold tracking-tight text-[var(--kit-text-primary)] hover:opacity-90 transition-opacity min-w-0 flex-1 mr-2"
+            title={siteConfig.name}
           >
             {siteConfig.logo && (
               <Image
@@ -111,7 +112,7 @@ export function MobileMenuDrawer({ isOpen, onClose }: MobileMenuDrawerProps) {
                 className="h-8 w-8 rounded-lg object-cover ring-1 ring-black/10 dark:ring-white/10 shadow-xs shrink-0 bg-black"
               />
             )}
-            <span>{siteConfig.name}</span>
+            <span className="truncate">{siteConfig.name}</span>
           </Link>
           <button
             onClick={onClose}

@@ -21,6 +21,12 @@ export const siteConfig = {
   name: "Sivvai Labs Commerce Kit",
 
   /**
+   * Optional short name for compact spaces (e.g. mobile app bar).
+   * Falls back to `name` if not provided.
+   */
+  shortName: "Sivvai Labs",
+
+  /**
    * A short one-line description of the business.
    * Used as the default meta description fallback.
    */

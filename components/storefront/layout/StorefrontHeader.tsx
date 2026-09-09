@@ -35,20 +35,21 @@ export function StorefrontHeader() {
   return (
     <>
       <header className="sticky top-0 z-40 w-full border-b border-[var(--kit-border)] bg-[var(--kit-bg)]/90 backdrop-blur-md transition-colors">
-        <div className="mx-auto flex h-16 max-w-screen-xl items-center justify-between px-4 sm:px-6 lg:px-8">
+        <div className="mx-auto flex h-16 max-w-screen-xl items-center justify-between px-3 sm:px-6 lg:px-8 gap-2 sm:gap-4">
           {/* Left: Mobile Menu Button + Logo */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5 sm:gap-3 min-w-0 flex-1 md:flex-initial mr-2 sm:mr-4">
             <button
               onClick={() => setIsMenuOpen(true)}
               aria-label="Open navigation menu"
-              className="flex h-10 w-10 items-center justify-center rounded-lg text-[var(--kit-text-primary)] hover:bg-[var(--kit-surface)] transition-colors md:hidden"
+              className="flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-lg text-[var(--kit-text-primary)] hover:bg-[var(--kit-surface)] transition-colors md:hidden"
             >
               <Menu className="h-5 w-5" />
             </button>
 
             <Link
               href={ROUTES.home}
-              className="flex items-center gap-2.5 hover:opacity-90 transition-opacity"
+              className="flex items-center gap-2 sm:gap-2.5 min-w-0 hover:opacity-90 transition-opacity"
+              title={siteConfig.name}
             >
               {siteConfig.logo && (
                 <Image
@@ -57,11 +58,18 @@ export function StorefrontHeader() {
                   width={36}
                   height={36}
                   priority
-                  className="h-9 w-9 rounded-lg object-cover ring-1 ring-black/10 dark:ring-white/10 shadow-xs shrink-0 bg-black"
+                  className="h-8 w-8 sm:h-9 sm:w-9 rounded-lg object-cover ring-1 ring-black/10 dark:ring-white/10 shadow-xs shrink-0 bg-black"
                 />
               )}
-              <span className="text-lg font-bold tracking-tight text-[var(--kit-text-primary)]">
-                {siteConfig.name}
+              <span className="text-sm sm:text-base md:text-lg font-bold tracking-tight text-[var(--kit-text-primary)] truncate block">
+                {"shortName" in siteConfig && siteConfig.shortName ? (
+                  <>
+                    <span className="inline sm:hidden">{siteConfig.shortName}</span>
+                    <span className="hidden sm:inline">{siteConfig.name}</span>
+                  </>
+                ) : (
+                  siteConfig.name
+                )}
               </span>
             </Link>
           </div>
@@ -80,13 +88,13 @@ export function StorefrontHeader() {
           </nav>
 
           {/* Right: Search, Account & Cart Action Icons */}
-          <div className="flex items-center gap-1 sm:gap-2">
+          <div className="flex items-center gap-0.5 sm:gap-2 shrink-0">
             {/* Search Overlay Trigger */}
             <button
               type="button"
               onClick={() => setIsSearchOpen(true)}
               aria-label="Open search overlay"
-              className="flex h-10 w-10 items-center justify-center rounded-lg text-[var(--kit-text-primary)] hover:bg-[var(--kit-surface)] transition-colors"
+              className="flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-lg text-[var(--kit-text-primary)] hover:bg-[var(--kit-surface)] transition-colors"
             >
               <Search className="h-5 w-5" />
             </button>
@@ -98,11 +106,11 @@ export function StorefrontHeader() {
             <button
               onClick={openDrawer}
               aria-label={`Shopping cart with ${cartCount} items`}
-              className="relative flex h-10 w-10 items-center justify-center rounded-lg text-[var(--kit-text-primary)] hover:bg-[var(--kit-surface)] transition-colors"
+              className="relative flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-lg text-[var(--kit-text-primary)] hover:bg-[var(--kit-surface)] transition-colors"
             >
               <ShoppingBag className="h-5 w-5" />
               {cartCount > 0 && (
-                <span className="absolute top-1.5 right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-[var(--kit-accent)] text-[9px] font-bold text-[var(--kit-accent-fg)] animate-in zoom-in-50 duration-150">
+                <span className="absolute top-1 sm:top-1.5 right-1 sm:right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-[var(--kit-accent)] text-[9px] font-bold text-[var(--kit-accent-fg)] animate-in zoom-in-50 duration-150">
                   {cartCount}
                 </span>
               )}

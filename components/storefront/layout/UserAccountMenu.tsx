@@ -101,15 +101,15 @@ export function UserAccountMenu() {
           aria-expanded={isOpen}
           aria-haspopup="true"
           aria-label={isAuthenticated ? `Account menu for ${userDisplayName}` : "Customer account menu"}
-          className="flex h-10 items-center gap-1.5 px-2 rounded-lg text-[var(--kit-text-primary)] hover:bg-[var(--kit-surface)] transition-colors min-h-[44px]"
+          className="flex h-9 sm:h-10 items-center gap-1 sm:gap-1.5 px-1 sm:px-2 rounded-lg text-[var(--kit-text-primary)] hover:bg-[var(--kit-surface)] transition-colors shrink-0"
         >
           {isAuthenticated ? (
-            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--kit-accent)] text-[var(--kit-accent-fg)] text-xs font-bold shadow-xs">
+            <div className="flex h-6 w-6 sm:h-7 sm:w-7 items-center justify-center rounded-full bg-[var(--kit-accent)] text-[var(--kit-accent-fg)] text-[10px] sm:text-xs font-bold shadow-xs">
               {userInitials}
             </div>
           ) : (
-            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--kit-surface)] text-[var(--kit-text-secondary)] border border-[var(--kit-border)]">
-              <User className="h-4 w-4" />
+            <div className="flex h-6 w-6 sm:h-7 sm:w-7 items-center justify-center rounded-full bg-[var(--kit-surface)] text-[var(--kit-text-secondary)] border border-[var(--kit-border)]">
+              <User className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
             </div>
           )}
           <ChevronDown className="h-3 w-3 text-[var(--kit-muted-fg)] transition-transform duration-150" />
