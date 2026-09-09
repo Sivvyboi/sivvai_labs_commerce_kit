@@ -15,7 +15,8 @@ import { ROUTES } from "@/constants/routes";
 import { Tag } from "lucide-react";
 
 export async function CategoriesSection() {
-  const categories = await categoryService.getCategoryTree();
+  // Use flat list so ALL active categories (including subcategories) are shown.
+  const categories = await categoryService.getCategories();
 
   if (categories.length === 0) {
     return null;
