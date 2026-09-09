@@ -29,26 +29,25 @@ export function HeroSection() {
             alt="Storefront cover banner"
             fill
             priority
+            quality={100}
+            unoptimized
             sizes="100vw"
             className="object-cover object-[78%_12%] sm:object-[70%_20%] lg:object-[left_center]"
           />
 
-          {/* Mobile Overlay: Fades smoothly from a light tint at the top to solid background at the bottom where the write-up sits */}
-          <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[var(--kit-bg)]/75 to-[var(--kit-bg)] via-40% to-80% lg:hidden" />
+          {/* Mobile Overlay: Clear at the top so the models stay razor sharp; fades smoothly down for the text */}
+          <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[var(--kit-bg)]/40 to-[var(--kit-bg)] via-50% to-85% lg:hidden" />
 
-          {/* Desktop Overlay: Directional horizontal scrim - solid on left behind write-up, fading out to reveal the models */}
-          <div className="hidden lg:block absolute inset-0 bg-gradient-to-r from-[var(--kit-bg)] via-[var(--kit-bg)]/85 to-transparent via-45% to-80%" />
-
-          {/* Subtle Ambient Radial Lighting */}
-          <div className="absolute inset-0 bg-radial-[at_top_left] from-white/10 to-transparent pointer-events-none" />
+          {/* Desktop Overlay: Light directional scrim solely behind the left-aligned text; completely clear across the models */}
+          <div className="hidden lg:block absolute inset-0 bg-gradient-to-r from-[var(--kit-bg)]/85 via-[var(--kit-bg)]/30 to-transparent via-25% to-42%" />
         </div>
       )}
 
       {/* Content Container */}
-      <div className="relative z-10 mx-auto max-w-screen-xl px-4 pt-44 pb-10 sm:pt-48 sm:pb-16 lg:px-8 lg:py-24">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center min-h-[380px] sm:min-h-[420px] lg:min-h-[480px]">
+      <div className="relative z-10 mx-auto max-w-screen-xl px-4 pt-36 pb-8 sm:pt-44 sm:pb-12 lg:px-8 lg:py-24">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-12 items-center min-h-[380px] sm:min-h-[420px] lg:min-h-[480px]">
           {/* Text & CTAs Column */}
-          <div className="lg:col-span-7 xl:col-span-6 space-y-5 sm:space-y-6 text-center lg:text-left">
+          <div className="lg:col-span-7 xl:col-span-6 space-y-4 sm:space-y-6 text-center lg:text-left">
             <div className="inline-flex items-center gap-2 rounded-full bg-[var(--kit-accent)]/10 px-3.5 py-1 text-xs font-semibold text-[var(--kit-accent)] border border-[var(--kit-accent)]/20 shadow-xs backdrop-blur-xs">
               <Sparkles className="h-3.5 w-3.5" />
               <span>Social Commerce Powered</span>
@@ -63,7 +62,7 @@ export function HeroSection() {
             </p>
 
             {/* Action Buttons */}
-            <div className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-3 pt-2">
+            <div className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-2.5 sm:gap-3 pt-1 sm:pt-2">
               <Link
                 href={heroConfig.primaryCtaHref ?? ROUTES.catalog}
                 className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-lg bg-[var(--kit-accent)] px-6 py-3 text-sm font-semibold text-[var(--kit-accent-fg)] hover:opacity-90 active:scale-[0.98] transition-all min-h-[44px] shadow-sm"
