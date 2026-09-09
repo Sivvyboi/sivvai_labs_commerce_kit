@@ -4,8 +4,11 @@
  * Async Server Component. Homepage category browsing section.
  *
  * Displays top categories with quick-filter pills/cards.
+ * When a category has an og_image set, it renders the image;
+ * otherwise falls back to a Tag icon placeholder.
  */
 
+import Image from "next/image";
 import Link from "next/link";
 import * as categoryService from "@/services/category-service";
 import { ROUTES } from "@/constants/routes";
@@ -38,9 +41,21 @@ export async function CategoriesSection() {
             href={ROUTES.category(cat.slug)}
             className="group flex flex-col items-center justify-center p-4 rounded-xl border border-[var(--kit-border)] bg-[var(--kit-card)] hover:border-[var(--kit-accent)] hover:bg-[var(--kit-surface)] shadow-xs transition-all text-center"
           >
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--kit-surface)] group-hover:bg-[var(--kit-accent)]/10 text-[var(--kit-muted-fg)] group-hover:text-[var(--kit-accent)] transition-colors mb-2">
-              <Tag className="h-4 w-4" />
+            {/* Image or icon */}
+            <div className="relative flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-[var(--kit-surface)] group-hover:bg-[var(--kit-accent)]/10 mb-2 transition-colors">
+              {cat.og_image ? (
+                <Image
+                  src={cat.og_image}
+                  alt={cat.name}
+                  fill
+                  className="object-cover rounded-full"
+                  sizes="48px"
+                />
+              ) : (
+                <Tag className="h-5 w-5 text-[var(--kit-muted-fg)] group-hover:text-[var(--kit-accent)] transition-colors" />
+              )}
             </div>
+
             <span className="text-xs font-semibold text-[var(--kit-text-primary)] group-hover:text-[var(--kit-accent)] transition-colors truncate w-full">
               {cat.name}
             </span>

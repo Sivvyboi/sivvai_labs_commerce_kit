@@ -122,6 +122,7 @@ export const CreateCategoryAdminSchema = z.object({
   slug: z.string().min(1, "Slug is required").regex(/^[a-z0-9-]+$/, "Slug must be lowercase letters, numbers and hyphens only"),
   description: z.string().optional().nullable(),
   parent_id: z.string().uuid().optional().nullable(),
+  og_image: z.string().url("Image must be a valid URL").optional().nullable(),
 });
 
 export type CreateCategoryAdminInput = z.infer<typeof CreateCategoryAdminSchema>;
