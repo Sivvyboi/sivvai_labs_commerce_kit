@@ -461,7 +461,7 @@ export async function syncProductVariants(productId: string): Promise<SyncProduc
   const supabase = createAdminClient();
   const { data, error } = await supabase.rpc("sync_product_variants_rpc" as never, {
     p_product_id: productId,
-    p_target_combinations: JSON.stringify(targetCombos),
+    p_target_combinations: targetCombos,
   } as never);
 
   if (error) {
