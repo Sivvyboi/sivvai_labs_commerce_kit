@@ -653,7 +653,8 @@ export function useCheckout(options?: { customer?: CustomerWithAddresses | null 
                 // Ignore
               }
 
-              router.push(`/checkout/confirmation?session_id=${activeSessionId}`);
+              const orderParam = verifyRes.orderNumber ? `&order_number=${encodeURIComponent(verifyRes.orderNumber)}` : "";
+              router.push(`/checkout/confirmation?session_id=${activeSessionId}${orderParam}`);
             } catch (vErr) {
               setIsSubmitting(false);
               setPaymentStatusLabel(null);

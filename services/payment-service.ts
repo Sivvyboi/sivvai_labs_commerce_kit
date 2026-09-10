@@ -269,7 +269,7 @@ export async function verifyAndFulfillPayment(reference: string): Promise<Verify
 
   // 2. Idempotency Check: If already confirmed with order_id, return existing order immediately
   if (attempt.status === "confirmed" && attempt.order_id) {
-    const existingOrder = await orderService.getOrderDetails(attempt.order_id);
+    const existingOrder = await orderService.getOrderDetails(attempt.order_id, { useAdmin: true });
     return {
       status: "already_confirmed",
       orderId: attempt.order_id,
@@ -342,27 +342,55 @@ export async function verifyAndFulfillPayment(reference: string): Promise<Verify
       reference
     );
   } catch (orderErr) {
-    // If session was already completed (e.g. concurrent webhook won race), return existing order
-    if (session.status === "completed") {
-      const refreshedAttempt = await paymentRepo.findPaymentAttemptByReference(reference);
-      if (refreshedAttempt?.order_id) {
-        const existingOrder = await orderService.getOrderDetails(refreshedAttempt.order_id);
+    const errMsg = orderErr instanceof Error ? orderErr.message : String(orderErr);
+    const isAlreadyCompleted =
+      errMsg.includes("CHECKOUT_ALREADY_COMPLETED") ||
+      errMsg.includes("PAYMENT_ALREADY_CONFIRMED") ||
+      errMsg.includes("already been completed") ||
+      errMsg.includes("already been confirmed");
+
+    if (isAlreadyCompleted) {
+      // A legitimate concurrent caller (e.g. webhook or browser callback) completed this checkout session.
+      // Recover the existing order using the authoritative payment attempt bridge.
+      let resolvedOrder: Awaited<ReturnType<typeof orderService.getOrderDetails>> | null = null;
+      let confirmedAttempt: paymentRepo.PaymentAttemptRow | null = null;
+
+      // The RPC links payment_attempts.order_id atomically, so attempt is typically available immediately.
+      // We run a bounded fallback check (up to 3 polls, 150ms apart) in case of write replica/commit delay.
+      const maxAttempts = 3;
+      for (let attemptIdx = 0; attemptIdx < maxAttempts; attemptIdx++) {
+        const refreshedAttempt = await paymentRepo.findPaymentAttemptByReference(reference);
+        if (refreshedAttempt?.order_id) {
+          try {
+            resolvedOrder = await orderService.getOrderDetails(refreshedAttempt.order_id, { useAdmin: true });
+            confirmedAttempt = refreshedAttempt;
+            break;
+          } catch {
+            // Non-fatal: retry
+          }
+        }
+        if (attemptIdx < maxAttempts - 1) {
+          await new Promise((resolve) => setTimeout(resolve, 150));
+        }
+      }
+
+      if (resolvedOrder && confirmedAttempt?.order_id) {
         return {
           status: "already_confirmed",
-          orderId: refreshedAttempt.order_id,
-          orderNumber: existingOrder.order_number,
-          paymentAttempt: refreshedAttempt,
+          orderId: confirmedAttempt.order_id,
+          orderNumber: resolvedOrder.order_number,
+          paymentAttempt: confirmedAttempt,
         };
       }
     }
     throw orderErr;
   }
 
-  // 7. STEP 4 OF LIFECYCLE: Mark attempt confirmed ONLY after order creation succeeds
+  // 7. STEP 4 OF LIFECYCLE: Update payment attempt with full verification metadata
   const confirmedAttempt = await paymentRepo.updatePaymentAttempt(attempt.id, {
     order_id: order.id,
     status: "confirmed",
-    confirmed_at: new Date().toISOString(),
+    confirmed_at: attempt.confirmed_at || new Date().toISOString(),
     metadata: {
       ...meta,
       verification,

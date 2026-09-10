@@ -42,17 +42,19 @@ export default async function OrderConfirmationPage({
 }: ConfirmationPageProps) {
   const { session_id: sessionId } = await searchParams;
 
-  // Fetch checkout session for graceful fallback display
+  // 1. Authorize caller via existing checkout security:
+  //    Queries checkout_sessions with RLS-gated client (evaluating auth.uid() or x-cart-token-hash).
+  //    If the visitor does not own this session, RLS returns null.
   let session = null;
   if (sessionId) {
-    session = await checkoutRepo.findCheckoutSessionById(sessionId);
+    session = await checkoutRepo.findCheckoutSessionById(sessionId, { useAdmin: false });
   }
 
-  // Attempt to resolve the confirmed order via payment_attempts bridge.
-  // This will be null if payment is still pending / session not yet fulfilled.
+  // 2. Resolve confirmed order via payment_attempts bridge.
+  //    Authorized strictly to the authenticated / cart-token-validated session.
   let order: orderRepo.OrderWithLines | null = null;
-  if (sessionId) {
-    order = await orderRepo.findOrderByCheckoutSessionId(sessionId);
+  if (session && session.status === "completed" && sessionId) {
+    order = await orderRepo.findOrderByCheckoutSessionId(sessionId, { useAdmin: true });
   }
 
   return (
@@ -113,6 +115,15 @@ export default async function OrderConfirmationPage({
               <span className="font-bold text-amber-500 capitalize">{session.status}</span>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ── Fallback: No Valid Session ──────────────────────────────────────── */}
+      {!order && !session && (
+        <div className="mx-auto max-w-2xl text-center py-6 space-y-3">
+          <p className="text-sm text-[var(--kit-muted-fg)]">
+            No active checkout session found. If you recently completed a payment, please check your email for your confirmation receipt.
+          </p>
         </div>
       )}
 

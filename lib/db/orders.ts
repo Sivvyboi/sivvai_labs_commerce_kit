@@ -156,9 +156,10 @@ export async function findOrderByNumberAndEmail(
  * Uses the server Supabase client (RLS-gated, never service-role).
  */
 export async function findOrderByCheckoutSessionId(
-  checkoutSessionId: string
+  checkoutSessionId: string,
+  options?: { useAdmin?: boolean }
 ): Promise<OrderWithLines | null> {
-  const supabase = await createClient();
+  const supabase = options?.useAdmin ? createAdminClient() : await createClient();
 
   // Fetch recent confirmed payment attempts with metadata to match on session ID.
   // We filter in JS because metadata is jsonb without an index on the nested field.
@@ -178,7 +179,7 @@ export async function findOrderByCheckoutSessionId(
   });
 
   if (!matched?.order_id) return null;
-  return findOrderById(matched.order_id);
+  return findOrderById(matched.order_id, options);
 }
 
 export async function findCustomerOrders(customerId: string): Promise<OrderWithLines[]> {

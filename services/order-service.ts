@@ -45,18 +45,19 @@ export async function createOrderFromCheckout(
   const order = rpcData as unknown as orderRepo.OrderWithLines;
 
   // Dispatch notification outside the transaction boundary — a notification
-  // failure must never roll back the order.
+  // failure must never roll back the order or block immediate fulfillment return.
   if (order?.id) {
-    try {
-      await notificationService.sendOrderNotification({
+    notificationService
+      .sendOrderNotification({
         customerId: order.customer_id,
         orderId: order.id,
         channel: "email",
         eventType: "order.created",
+      })
+      .catch((err) => {
+        // Notification failures are non-fatal; order is already committed.
+        console.error("[order-service] Async order.created notification failed:", err);
       });
-    } catch {
-      // Notification failures are non-fatal; order is already committed.
-    }
   }
 
   return order;
