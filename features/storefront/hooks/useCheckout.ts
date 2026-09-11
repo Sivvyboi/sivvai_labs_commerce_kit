@@ -22,6 +22,7 @@ import {
   initiatePaymentAction,
   verifyPaymentAction,
 } from "@/features/storefront/actions/checkout.actions";
+import { clearCartAction } from "@/features/storefront/actions/cart.actions";
 import type { InitiateCheckoutInput } from "@/lib/validation";
 import type { ResolvedShippingOption } from "@/services/shipping-service";
 
@@ -653,8 +654,12 @@ export function useCheckout(options?: { customer?: CustomerWithAddresses | null 
                 // Ignore
               }
 
+              // Clear the server-side cart so it's empty after redirect
+              await clearCartAction().catch(() => {});
+
               const orderParam = verifyRes.orderNumber ? `&order_number=${encodeURIComponent(verifyRes.orderNumber)}` : "";
-              router.push(`/checkout/confirmation?session_id=${activeSessionId}${orderParam}`);
+              // Hard reload resets the Zustand cart store from scratch
+              window.location.href = `/checkout/confirmation?session_id=${activeSessionId}${orderParam}`;
             } catch (vErr) {
               setIsSubmitting(false);
               setPaymentStatusLabel(null);
@@ -673,11 +678,15 @@ export function useCheckout(options?: { customer?: CustomerWithAddresses | null 
         // Ignore
       }
 
+      // Clear the server-side cart before leaving this page
+      await clearCartAction().catch(() => {});
+
       const authUrl = payRes.authorizationUrl;
       if (authUrl && !authUrl.includes("mock-")) {
         window.location.href = authUrl;
       } else {
-        router.push(`/checkout/confirmation?session_id=${activeSessionId}`);
+        // Hard reload resets the Zustand cart store from scratch
+        window.location.href = `/checkout/confirmation?session_id=${activeSessionId}`;
       }
     } catch (err) {
       setIsSubmitting(false);
